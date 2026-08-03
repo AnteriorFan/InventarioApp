@@ -1,0 +1,23 @@
+﻿@model InventarioApp.Models.Item
+
+@{
+    ViewBag.Title = "Modificar Item";
+}
+
+<h2>Modificar Item</h2>
+
+@using (Html.BeginForm())
+{
+    @Html.AntiForgeryToken()
+    @Html.HiddenFor(m => m.Id)
+
+    <div>@Html.LabelFor(m => m.Codigo) @Html.TextBoxFor(m => m.Codigo, new { @readonly = "readonly" })</div>
+    <div>@Html.LabelFor(m => m.Nombre) @Html.TextBoxFor(m => m.Nombre)</div>
+    <div>@Html.LabelFor(m => m.Descripcion) @Html.TextBoxFor(m => m.Descripcion)</div>
+    <div>@Html.LabelFor(m => m.IdCategoria) @Html.TextBoxFor(m => m.IdCategoria)</div>
+    <div>@Html.LabelFor(m => m.Cantidad) @Html.TextBoxFor(m => m.Cantidad)</div>
+    <div>@Html.LabelFor(m => m.UnidadMedida) @Html.TextBoxFor(m => m.UnidadMedida)</div>
+    <div>@Html.LabelFor(m => m.Ubicacion) @Html.TextBoxFor(m => m.Ubicacion)</div>
+
+    <button type="submit">Guardar</button>
+}
