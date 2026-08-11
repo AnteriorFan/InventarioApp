@@ -1,0 +1,29 @@
+@model IEnumerable<InventarioApp.Models.Espacio>
+@{ ViewBag.Title = "Espacios"; }
+
+<h2>Espacios</h2>
+<a href="@Url.Action("Create")" class="btn btn-primary mb-3">+ Nuevo espacio</a>
+
+<table class="table table-striped">
+    <thead><tr><th>Edificio</th><th>Área</th><th>Nombre</th><th>Descripción</th><th>Acciones</th></tr></thead>
+    <tbody>
+        @foreach (var s in Model)
+        {
+            <tr>
+                <td>@s.NombreEdificio</td>
+                <td>@s.NombreArea</td>
+                <td>@s.Nombre</td>
+                <td>@s.Descripcion</td>
+                <td>
+                    <a href="@Url.Action("Edit", new { id = s.Id })" class="btn btn-sm btn-outline-secondary">Editar</a>
+                    @using (Html.BeginForm("Delete", "Espacios", FormMethod.Post, new { onsubmit = "return confirm('¿Eliminar este espacio?');", style = "display:inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@s.Id" />
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

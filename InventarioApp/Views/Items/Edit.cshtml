@@ -1,23 +1,29 @@
-﻿@model InventarioApp.Models.Item
+@model InventarioApp.Models.Item
 
 @{
-    ViewBag.Title = "Modificar Item";
+    ViewBag.Title = "Modificar item";
+    ViewBag.EsCreacion = false;
+
+    if (Request.IsAjaxRequest()) { Layout = null; }
 }
 
-<h2>Modificar Item</h2>
+<div class="modal-header">
+    <div>
+        <h5 class="modal-title">Modificar item</h5>
+        <div class="text-muted-sm">@Model.Nombre <span class="badge-codigo ms-1">@Model.Codigo</span></div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+</div>
 
-@using (Html.BeginForm())
+@using (Html.BeginForm("Edit", "Items", FormMethod.Post, new { id = "itemForm", enctype = "multipart/form-data" }))
 {
     @Html.AntiForgeryToken()
     @Html.HiddenFor(m => m.Id)
 
-    <div>@Html.LabelFor(m => m.Codigo) @Html.TextBoxFor(m => m.Codigo, new { @readonly = "readonly" })</div>
-    <div>@Html.LabelFor(m => m.Nombre) @Html.TextBoxFor(m => m.Nombre)</div>
-    <div>@Html.LabelFor(m => m.Descripcion) @Html.TextBoxFor(m => m.Descripcion)</div>
-    <div>@Html.LabelFor(m => m.IdCategoria) @Html.TextBoxFor(m => m.IdCategoria)</div>
-    <div>@Html.LabelFor(m => m.Cantidad) @Html.TextBoxFor(m => m.Cantidad)</div>
-    <div>@Html.LabelFor(m => m.UnidadMedida) @Html.TextBoxFor(m => m.UnidadMedida)</div>
-    <div>@Html.LabelFor(m => m.Ubicacion) @Html.TextBoxFor(m => m.Ubicacion)</div>
+    @Html.Partial("_ItemFormCard", Model)
 
-    <button type="submit">Guardar</button>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+    </div>
 }

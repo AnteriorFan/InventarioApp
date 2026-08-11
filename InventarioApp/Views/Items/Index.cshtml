@@ -1,34 +1,182 @@
-﻿@model IEnumerable<InventarioApp.Models.Item>
+@model IEnumerable<InventarioApp.Models.Item>
 
 @{
     ViewBag.Title = "Items";
 }
 
-<h2>Items en inventario</h2>
-<a href="@Url.Action("Create")">+ Nuevo item</a>
+<div class="page-head">
+    <div>
+        <h1>Items en inventario</h1>
+        <p class="subtitle">@Model.Count() items activos</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Escanear")" class="btn btn-outline-secondary">Escanear código</a>
+        <button type="button" class="btn btn-primary open-modal-btn" data-url="@Url.Action("Create")">Nuevo item</button>
+    </div>
+</div>
 
-<table class="table">
-    <thead>
-        <tr><th>Código</th><th>Nombre</th><th>Cantidad</th><th>Acciones</th></tr>
-    </thead>
-    <tbody>
-        @foreach (var item in Model)
-        {
-            <tr>
-                <td>@item.Codigo</td>
-                <td>@item.Nombre</td>
-                <td>@item.Cantidad</td>
-                <td>
-                    <a href="@Url.Action("Edit", new { id = item.Id })">Editar</a>
+<div class="card">
+    <div class="card-body">
+        <table id="itemsTable" class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Categoría</th>
+                    <th>Ubicación</th>
+                    <th>Existencia</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td>
+                            <div class="cell-main">@item.Nombre</div>
+                            <div class="cell-sub">@item.Codigo</div>
+                        </td>
+                        <td>@(string.IsNullOrEmpty(item.NombreCategoria) ? "—" : item.NombreCategoria)</td>
+                        <td>@(string.IsNullOrEmpty(item.Ubicacion) ? "—" : item.Ubicacion)</td>
+                        <td>
+                            @*  El umbral ya no es un "< 10" fijo: cada item compara contra
+                                su propio stock_minimo (columna nueva). Un tornillo y un
+                                servidor no se agotan al mismo numero. *@
+                            @if (item.Cantidad == 0)
+                            {
+                                <span class="badge bg-danger">Agotado</span>
+                            }
+                            else if (item.Cantidad <= item.StockMinimo)
+                            {
+                                <span class="badge bg-warning">@item.Cantidad @item.UnidadMedida · bajo mínimo</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">@item.Cantidad @item.UnidadMedida</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="row-actions">
+                                <a href="@Url.Action("Detalles", new { id = item.Id })" class="btn btn-sm btn-outline-secondary">Detalles</a>
+                                <button type="button" class="btn btn-sm btn-outline-secondary open-modal-btn" data-url="@Url.Action("Edit", new { id = item.Id })">Editar</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary open-modal-btn" data-url="@Url.Action("Historial", new { id = item.Id })">Historial</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ver-codigo-btn" data-codigo="@item.Codigo" data-nombre="@item.Nombre">Código</button>
+                                @using (Html.BeginForm("Delete", "Items", FormMethod.Post, new { onsubmit = "return confirm('¿Seguro que quieres eliminar este item?');" }))
+                                {
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@item.Id" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
 
-                    @using (Html.BeginForm("Delete", "Items", FormMethod.Post, new { onsubmit = "return confirm('¿Seguro que quieres eliminar este item?');", style = "display:inline" }))
-                    {
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="id" value="@item.Id" />
-                        <button type="submit">Eliminar</button>
+@*  modal-xl: la tarjeta de dos columnas (imagen + datos + codigos) no cabe
+    en el ancho por defecto de un modal de Bootstrap. *@
+<div class="modal fade" id="itemModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" id="itemModalContent"></div>
+    </div>
+</div>
+
+<div class="modal fade" id="codigoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="codigoModalTitle">Código</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="codigo-box mb-3"><svg id="barcodeSvg"></svg></div>
+                <div class="codigo-box"><div id="qrcodeDiv"></div></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" onclick="window.print()">Imprimir</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        $(function () {
+
+            $('#itemsTable').DataTable({
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' },
+                // La columna de acciones no se ordena ni se busca: son botones.
+                columnDefs: [{ targets: -1, orderable: false, searchable: false }],
+                order: [[0, 'asc']]
+            });
+
+            var itemModal = new bootstrap.Modal(document.getElementById('itemModal'));
+
+            $(document).on('click', '.open-modal-btn', function (e) {
+                e.preventDefault();
+                $.get($(this).data('url'), function (html) {
+                    // Al inyectar el HTML, jQuery ejecuta los <script> que trae
+                    // dentro: por eso _ItemFormCard se inicializa solo.
+                    $('#itemModalContent').html(html);
+                    itemModal.show();
+                });
+            });
+
+            $(document).on('submit', '#itemForm', function (e) {
+                e.preventDefault();
+                var form = $(this);
+                var actionUrl = form.attr('action');
+                var $btn = form.find('button[type="submit"]');
+
+                // FormData SI incluye archivos; .serialize() no (solo arma un
+                // string con los campos de texto). Sin esto la imagen nunca
+                // llega al servidor, y sin ningun error visible.
+                var formData = new FormData(form[0]);
+
+                $btn.prop('disabled', true).text('Guardando…');
+
+                $.ajax({
+                    url: actionUrl,
+                    type: 'POST',
+                    data: formData,
+                    processData: false,  // jQuery no debe convertir FormData a string
+                    contentType: false,  // el navegador arma el multipart con su boundary
+                    success: function (response) {
+                        if (response && response.success) {
+                            var esCreacion = actionUrl.indexOf('/Create') !== -1;
+                            guardarFlashPendiente(
+                                esCreacion ? 'Item creado correctamente.' : 'Item modificado correctamente.');
+                            location.reload();
+                        } else {
+                            $btn.prop('disabled', false).text('Guardar');
+                        }
+                    },
+                    error: function () {
+                        $btn.prop('disabled', false).text('Guardar');
+                        mostrarFlash('No se pudo guardar el item. Revisa los datos e inténtalo de nuevo.', 'error');
+                        itemModal.hide();
                     }
-                </td>
-            </tr>
-        }
-    </tbody>
-</table>
+                });
+            });
+
+            // --- Modal de código ---
+            var codigoModal = new bootstrap.Modal(document.getElementById('codigoModal'));
+
+            $(document).on('click', '.ver-codigo-btn', function () {
+                var codigo = $(this).data('codigo');
+                var nombre = $(this).data('nombre');
+
+                $('#codigoModalTitle').text(nombre + ' (' + codigo + ')');
+                JsBarcode('#barcodeSvg', codigo, { format: 'CODE128', height: 60, fontSize: 14 });
+
+                $('#qrcodeDiv').empty();
+                new QRCode(document.getElementById('qrcodeDiv'), { text: codigo, width: 128, height: 128 });
+
+                codigoModal.show();
+            });
+        });
+    </script>
+}

@@ -1,0 +1,293 @@
+@model InventarioApp.Models.Item
+
+@*  Cuerpo compartido del formulario de item (Crear y Editar).
+
+    Create.cshtml y Edit.cshtml quedaron como cascarones: header + BeginForm +
+    footer. Todo el layout vive aca, para que las dos pantallas no se vayan
+    separando con cada cambio.
+
+    Lo unico que cambia entre una y otra es ViewBag.EsCreacion:
+      - true  -> el Codigo es editable y se muestran las ayudas (form-text + ⓘ)
+      - false -> el Codigo es readonly (es la llave del item, cambiarlo
+                 desconectaria las etiquetas ya impresas) y sin ayudas, porque
+                 quien edita ya conoce los campos.
+
+    Layout: imagen a la izquierda (col-lg-5), datos a la derecha (col-lg-7),
+    codigos abajo a todo el ancho. En pantallas chicas se apila solo.
+*@
+
+@{
+    bool esCreacion = ViewBag.EsCreacion != null && (bool)ViewBag.EsCreacion;
+    string imagenActual = string.IsNullOrEmpty(Model.ImagenS3Key)
+        ? ""
+        : Url.Content("~/Content/uploads/" + Model.ImagenS3Key);
+}
+
+<div class="modal-body">
+    <div class="row g-4">
+
+        @*  ----- Columna izquierda: imagen ----- *@
+        <div class="col-lg-5">
+            <label class="form-label">Imagen</label>
+
+            @*  El <input type="file"> real esta adentro, transparente y
+                estirado sobre toda la caja: asi el click en cualquier parte
+                de la zona abre el selector de archivos, sin necesidad de
+                interceptar nada por JS. *@
+            <div class="img-drop" id="imgDrop">
+                <img id="imgPreview" src="@imagenActual" alt="" style="@(string.IsNullOrEmpty(imagenActual) ? "display:none" : "")" />
+
+                <div class="img-placeholder" id="imgPlaceholder" style="@(string.IsNullOrEmpty(imagenActual) ? "" : "display:none")">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    <div>Arrastra una imagen<br />o haz clic para elegirla</div>
+                </div>
+
+                <input type="file" name="imagen" id="imagenInput" accept="image/*" />
+            </div>
+
+            <div class="img-actions">
+                <span>JPG o PNG &middot; máx. 10 MB</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnQuitarImagen"
+                        style="@(string.IsNullOrEmpty(imagenActual) ? "display:none" : "")">Quitar</button>
+            </div>
+
+            @if (!esCreacion && !string.IsNullOrEmpty(Model.ImagenS3Key))
+            {
+                <p class="form-text mb-0">
+                    Si no eliges un archivo nuevo, se conserva la imagen actual.
+                </p>
+            }
+        </div>
+
+        @*  ----- Columna derecha: datos ----- *@
+        <div class="col-lg-7">
+            <div class="row g-3">
+
+                <div class="col-sm-5">
+                    @Html.LabelFor(m => m.Codigo, "Código", new { @class = "form-label" })
+                    @if (esCreacion)
+                    {
+                        <i class="hint-icon" data-bs-toggle="tooltip"
+                           title="Identificador único del item. Es lo que lee el escáner y lo que se imprime en la etiqueta, así que después de crearlo ya no se puede cambiar.">i</i>
+                        @Html.TextBoxFor(m => m.Codigo, new { @class = "form-control mono", placeholder = "TEC-HDMI-002", autocomplete = "off" })
+                        <div class="form-text">
+                            Ej. <code>TEC-HDMI-002</code> — usar <code>ÁREA-TIPO-NÚM</code> mantiene juntos los items parecidos al ordenar.
+                        </div>
+                    }
+                    else
+                    {
+                        @Html.TextBoxFor(m => m.Codigo, new { @class = "form-control mono", @readonly = "readonly" })
+                    }
+                </div>
+
+                <div class="col-sm-7">
+                    @Html.LabelFor(m => m.Nombre, "Nombre", new { @class = "form-label" })
+                    @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control", placeholder = esCreacion ? "Cable HDMI 2 m" : "" })
+                    @if (esCreacion)
+                    {
+                        <div class="form-text">Cómo lo pide la gente, no el nombre del fabricante.</div>
+                    }
+                </div>
+
+                <div class="col-sm-7">
+                    @Html.LabelFor(m => m.IdCategoria, "Categoría", new { @class = "form-label" })
+                    @Html.DropDownListFor(m => m.IdCategoria, (SelectList)ViewBag.Categorias, "— Selecciona categoría —", new { @class = "form-select" })
+                </div>
+
+                <div class="col-sm-5">
+                    @Html.LabelFor(m => m.UnidadMedida, "Unidad de medida", new { @class = "form-label" })
+                    @Html.TextBoxFor(m => m.UnidadMedida, new { @class = "form-control", placeholder = esCreacion ? "pieza" : "" })
+                    @if (esCreacion)
+                    {
+                        <div class="form-text">pieza, caja, metro, litro…</div>
+                    }
+                </div>
+
+                <div class="col-sm-6">
+                    @Html.LabelFor(m => m.Cantidad, "Cantidad", new { @class = "form-label" })
+                    @if (esCreacion)
+                    {
+                        <i class="hint-icon" data-bs-toggle="tooltip"
+                           title="Existencia inicial: lo que hay hoy en el estante. A partir de aquí solo cambia registrando entradas y salidas, nunca editándola a mano.">i</i>
+                    }
+                    @Html.TextBoxFor(m => m.Cantidad, new { @class = "form-control num", type = "number", min = "0", step = "1" })
+                </div>
+
+                <div class="col-sm-6">
+                    @Html.LabelFor(m => m.StockMinimo, "Stock mínimo", new { @class = "form-label" })
+                    <i class="hint-icon" data-bs-toggle="tooltip"
+                       title="Punto de reorden. Cuando la cantidad baja hasta aquí, el item aparece en «Reposición urgente» en la pantalla de inicio.">i</i>
+                    @Html.TextBoxFor(m => m.StockMinimo, new { @class = "form-control num", type = "number", min = "0", step = "1" })
+                    @if (esCreacion)
+                    {
+                        <div class="form-text">Cuánto te dura reponer: si tarda una semana y gastas 3 al día, pon 21.</div>
+                    }
+                </div>
+
+                <div class="col-12">
+                    @Html.LabelFor(m => m.Ubicacion, "Ubicación", new { @class = "form-label" })
+                    @Html.TextBoxFor(m => m.Ubicacion, new { @class = "form-control", placeholder = esCreacion ? "Bodega A · Estante 3 · Nivel 2" : "" })
+                    @if (esCreacion)
+                    {
+                        <div class="form-text">Dónde encontrarlo físicamente, del espacio más grande al más chico.</div>
+                    }
+                </div>
+
+                <div class="col-12">
+                    @Html.LabelFor(m => m.Descripcion, "Descripción", new { @class = "form-label" })
+                    @Html.TextAreaFor(m => m.Descripcion, new { @class = "form-control", rows = "2", placeholder = esCreacion ? "Detalles que ayuden a no confundirlo con otro parecido: medidas, color, versión…" : "" })
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    @*  ----- Franja inferior: códigos ----- *@
+    <div class="codigo-strip">
+        <div class="codigo-title">
+            @(esCreacion ? "Vista previa de la etiqueta" : "Etiqueta del item")
+        </div>
+        <div class="row g-3">
+            <div class="col-sm-8">
+                <div class="codigo-box">
+                    <svg id="barcodePreview"></svg>
+                    <span class="placeholder-txt" id="barcodePlaceholder">El código de barras aparece al escribir el código</span>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="codigo-box">
+                    <div id="qrPreview"></div>
+                    <span class="placeholder-txt" id="qrPlaceholder">Código QR</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    //  Este <script> viaja DENTRO del partial a proposito.
+    //
+    //  El formulario se usa de dos maneras: como pagina completa (/Items/Create)
+    //  y como contenido inyectado en un modal por AJAX. jQuery ejecuta los
+    //  <script> que llegan en el HTML de un .html(), asi que poniendolo aca se
+    //  inicializa solo en los dos casos. Si viviera en Index.cshtml habria que
+    //  acordarse de llamarlo a mano despues de cada inyeccion, y la version de
+    //  pagina completa se quedaria sin nada.
+    (function () {
+
+        // --- Tooltips ---
+        // Bootstrap NO los activa solo: hay que instanciarlos. Y como este
+        // markup acaba de entrar al DOM, tiene que ser ahora, no en un
+        // $(document).ready() que ya paso hace rato.
+        $('[data-bs-toggle="tooltip"]').each(function () {
+            new bootstrap.Tooltip(this);
+        });
+
+        // --- Preview de la imagen ---
+        var $input = $('#imagenInput');
+        var $preview = $('#imgPreview');
+        var $placeholder = $('#imgPlaceholder');
+        var $btnQuitar = $('#btnQuitarImagen');
+        var $drop = $('#imgDrop');
+
+        function mostrarImagen(src) {
+            $preview.attr('src', src).show();
+            $placeholder.hide();
+            $btnQuitar.show();
+        }
+
+        function limpiarImagen() {
+            $preview.attr('src', '').hide();
+            $placeholder.show();
+            $btnQuitar.hide();
+        }
+
+        $input.on('change', function () {
+            var archivo = this.files && this.files[0];
+            if (!archivo) { return; }
+
+            // FileReader lee el archivo del disco del usuario y lo entrega como
+            // data URL, sin subirlo. El preview es 100% local: nada viaja al
+            // servidor hasta que se envia el formulario.
+            var reader = new FileReader();
+            reader.onload = function (e) { mostrarImagen(e.target.result); };
+            reader.readAsDataURL(archivo);
+        });
+
+        $btnQuitar.on('click', function () {
+            $input.val('');   // vacia la seleccion; el POST vuelve sin archivo
+            limpiarImagen();
+        });
+
+        // Arrastrar y soltar. Hay que cancelar dragover y drop, porque el
+        // comportamiento por defecto del navegador es ABRIR el archivo soltado
+        // y perder la pagina entera.
+        $drop.on('dragover', function (e) { e.preventDefault(); $drop.addClass('dragover'); })
+             .on('dragleave', function () { $drop.removeClass('dragover'); })
+             .on('drop', function (e) {
+                 e.preventDefault();
+                 $drop.removeClass('dragover');
+                 var archivos = e.originalEvent.dataTransfer.files;
+                 if (archivos && archivos.length) {
+                     $input[0].files = archivos;      // lo mete en el input real
+                     $input.trigger('change');        // reusa el handler de arriba
+                 }
+             });
+
+        // --- Codigo de barras y QR en vivo ---
+        var $codigo = $('#Codigo');
+        var $barcodePlaceholder = $('#barcodePlaceholder');
+        var $qrPlaceholder = $('#qrPlaceholder');
+        var timer = null;
+
+        function pintarCodigos() {
+            var valor = ($codigo.val() || '').trim();
+
+            if (valor.length < 3) {
+                $('#barcodePreview').empty().hide();
+                $('#qrPreview').empty();
+                $barcodePlaceholder.show();
+                $qrPlaceholder.show();
+                return;
+            }
+
+            $barcodePlaceholder.hide();
+            $qrPlaceholder.hide();
+
+            try {
+                $('#barcodePreview').show();
+                JsBarcode('#barcodePreview', valor, {
+                    format: 'CODE128',
+                    height: 52,
+                    fontSize: 13,
+                    margin: 4
+                });
+            } catch (e) {
+                // CODE128 acepta casi cualquier caracter, pero si el usuario
+                // pega algo raro no se puede dejar reventar el form entero.
+                $('#barcodePreview').hide();
+                $barcodePlaceholder.text('Ese código no se puede representar como código de barras').show();
+            }
+
+            $('#qrPreview').empty();
+            new QRCode(document.getElementById('qrPreview'), {
+                text: valor,
+                width: 96,
+                height: 96,
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        // Debounce: sin esto se regeneraria la imagen en CADA tecla.
+        $codigo.on('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(pintarCodigos, 250);
+        });
+
+        pintarCodigos();   // al abrir: en Editar ya hay codigo, en Crear no
+    })();
+</script>

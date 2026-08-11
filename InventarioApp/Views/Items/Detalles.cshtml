@@ -1,0 +1,190 @@
+@model InventarioApp.Models.DetalleItemViewModel
+
+@{
+    ViewBag.Title = Model.Item.Nombre;
+
+    var item = Model.Item;
+    var agotado = item.Cantidad == 0;
+    var bajoMinimo = !agotado && item.Cantidad <= item.StockMinimo;
+}
+
+<div class="page-head">
+    <div>
+        <h1>@item.Nombre</h1>
+        <p class="subtitle">
+            <span class="badge-codigo">@item.Codigo</span>
+            @if (!string.IsNullOrEmpty(item.NombreCategoria))
+            {
+                <span class="ms-2">@item.NombreCategoria</span>
+            }
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Volver a items</a>
+    </div>
+</div>
+
+<div class="row g-4">
+
+    @*  ----- Ficha del item: imagen + datos, mismo layout que el formulario ----- *@
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-sm-5">
+                        @if (!string.IsNullOrEmpty(item.ImagenS3Key))
+                        {
+                            <div class="img-drop" style="cursor:default">
+                                <img src="~/Content/uploads/@item.ImagenS3Key" alt="@item.Nombre" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="img-drop" style="cursor:default">
+                                <div class="img-placeholder">
+                                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                        <circle cx="8.5" cy="8.5" r="1.5" />
+                                        <polyline points="21 15 16 10 5 21" />
+                                    </svg>
+                                    <div>Sin imagen</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="col-sm-7">
+                        <div class="mb-3">
+                            <div class="kpi-label">Existencia actual</div>
+                            <div class="kpi-value @(agotado ? "text-danger" : bajoMinimo ? "text-warning" : "")">
+                                @item.Cantidad <span class="fs-6 fw-normal text-muted">@item.UnidadMedida</span>
+                            </div>
+                            @if (agotado)
+                            {
+                                <div class="form-text text-danger">Agotado — no hay unidades disponibles.</div>
+                            }
+                            else if (bajoMinimo)
+                            {
+                                <div class="form-text">Por debajo del mínimo (@item.StockMinimo). Toca reponer.</div>
+                            }
+                            else
+                            {
+                                <div class="form-text">Mínimo configurado: @item.StockMinimo @item.UnidadMedida</div>
+                            }
+                        </div>
+
+                        <dl class="row mb-0" style="font-size:.875rem">
+                            <dt class="col-4 fw-normal text-muted">Ubicación</dt>
+                            <dd class="col-8">@(string.IsNullOrEmpty(item.Ubicacion) ? "—" : item.Ubicacion)</dd>
+
+                            <dt class="col-4 fw-normal text-muted">Categoría</dt>
+                            <dd class="col-8">@(string.IsNullOrEmpty(item.NombreCategoria) ? "—" : item.NombreCategoria)</dd>
+
+                            <dt class="col-4 fw-normal text-muted">Descripción</dt>
+                            <dd class="col-8 mb-0">@(string.IsNullOrEmpty(item.Descripcion) ? "—" : item.Descripcion)</dd>
+                        </dl>
+                    </div>
+                </div>
+
+                @*  ----- Franja de códigos ----- *@
+                <div class="codigo-strip">
+                    <div class="codigo-title">Etiqueta</div>
+                    <div class="row g-3">
+                        <div class="col-sm-8">
+                            <div class="codigo-box"><svg id="barcodeDetalle"></svg></div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="codigo-box"><div id="qrDetalle"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @*  ----- Movimientos ----- *@
+        <div class="card">
+            <div class="card-header card-header-flex">
+                <span>Historial de movimientos</span>
+                <span class="hint">@Model.Movimientos.Count registros</span>
+            </div>
+            <div class="card-body">
+                @if (Model.Movimientos.Count == 0)
+                {
+                    <div class="empty">Todavía no se ha registrado ninguna entrada ni salida de este item.</div>
+                }
+                else
+                {
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr><th>Fecha</th><th>Tipo</th><th class="text-end">Cantidad</th><th>Observaciones</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in Model.Movimientos)
+                            {
+                                <tr>
+                                    <td class="text-nowrap">@m.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>
+                                        @if (m.TipoMovimiento == "ENTRADA")
+                                        {
+                                            <span class="badge bg-success">Entrada</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">Salida</span>
+                                        }
+                                    </td>
+                                    <td class="text-end num">
+                                        @(m.TipoMovimiento == "ENTRADA" ? "+" : "−")@m.Cantidad
+                                    </td>
+                                    <td class="text-muted-sm">@(string.IsNullOrEmpty(m.Observaciones) ? "—" : m.Observaciones)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+
+    @*  ----- Registrar movimiento ----- *@
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">Registrar movimiento</div>
+            <div class="card-body">
+                @using (Html.BeginForm("Registrar", "Movimientos", FormMethod.Post))
+                {
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="idItem" value="@item.Id" />
+
+                    <div class="mb-3">
+                        <label class="form-label">Tipo</label>
+                        <select name="tipoMovimiento" class="form-select">
+                            <option value="ENTRADA">Entrada — llega mercancía</option>
+                            <option value="SALIDA">Salida — se consume o se presta</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Cantidad</label>
+                        <input type="number" name="cantidad" class="form-control num" min="1" required />
+                        <div class="form-text">Disponible ahora: @item.Cantidad @item.UnidadMedida</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Observaciones</label>
+                        <input type="text" name="observaciones" class="form-control" placeholder="Motivo, quién lo pidió, factura…" />
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Registrar movimiento</button>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        $(function () {
+            JsBarcode('#barcodeDetalle', '@item.Codigo', { format: 'CODE128', height: 56, fontSize: 14 });
+            new QRCode(document.getElementById('qrDetalle'), { text: '@item.Codigo', width: 96, height: 96 });
+        });
+    </script>
+}

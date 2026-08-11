@@ -1,33 +1,433 @@
-﻿@{
-    ViewBag.Title = "Home Page";
+@model InventarioApp.Models.DashboardViewModel
+
+@{
+    ViewBag.Title = "Inicio";
 }
 
-<main>
-    <section class="row" aria-labelledby="aspnetTitle">
-        <h1 id="title">ASP.NET</h1>
-        <p class="lead">ASP.NET is a free web framework for building great Web sites and Web applications using HTML, CSS and JavaScript.</p>
-        <p><a href="https://asp.net" class="btn btn-primary btn-md">Learn more &raquo;</a></p>
-    </section>
+@functions {
+    //  Ancho de una barra, en porcentaje, listo para meter en un style inline.
+    //
+    //  El ToString con InvariantCulture NO es un detalle cosmético: el servidor
+    //  corre en español, donde el separador decimal es la coma. Sin él,
+    //  "width:12,5%" es CSS inválido y el navegador descarta la regla entera —
+    //  la barra se ve rota solo en producción y no hay error en ningún lado.
+    string Pct(double valor, double total)
+    {
+        if (total <= 0) return "0";
+        var pct = valor / total * 100;
+        if (pct > 100) pct = 100;
+        return pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    }
 
-    <div class="row">
-        <section class="col-md-4" aria-labelledby="gettingStartedTitle">
-            <h2 id="gettingStartedTitle">Getting started</h2>
-            <p>
-                ASP.NET MVC gives you a powerful, patterns-based way to build dynamic websites that
-                enables a clean separation of concerns and gives you full control over markup
-                for enjoyable, agile development.
-            </p>
-            <p><a class="btn btn-outline-dark" href="https://go.microsoft.com/fwlink/?LinkId=301865">Learn more &raquo;</a></p>
-        </section>
-        <section class="col-md-4" aria-labelledby="librariesTitle">
-            <h2 id="librariesTitle">Get more libraries</h2>
-            <p>NuGet is a free Visual Studio extension that makes it easy to add, remove, and update libraries and tools in Visual Studio projects.</p>
-            <p><a class="btn btn-outline-dark" href="https://go.microsoft.com/fwlink/?LinkId=301866">Learn more &raquo;</a></p>
-        </section>
-        <section class="col-md-4" aria-labelledby="hostingTitle">
-            <h2 id="hostingTitle">Web Hosting</h2>
-            <p>You can easily find a web hosting company that offers the right mix of features and price for your applications.</p>
-            <p><a class="btn btn-outline-dark" href="https://go.microsoft.com/fwlink/?LinkId=301867">Learn more &raquo;</a></p>
-        </section>
+    string HaceCuanto(DateTime fecha)
+    {
+        var transcurrido = DateTime.Now - fecha;
+
+        if (transcurrido.TotalMinutes < 1) return "hace un momento";
+        if (transcurrido.TotalMinutes < 60) return "hace " + (int)transcurrido.TotalMinutes + " min";
+        if (transcurrido.TotalHours < 24) return "hace " + (int)transcurrido.TotalHours + " h";
+        if (transcurrido.TotalDays < 7) return "hace " + (int)transcurrido.TotalDays + " d";
+
+        return fecha.ToString("dd/MM/yyyy");
+    }
+}
+
+@{
+    // Escala de las barras del top: el item que más se movió define el 100%.
+    var maxMovido = 0;
+    foreach (var m in Model.MasMovidos)
+    {
+        if (m.TotalMovido > maxMovido) { maxMovido = m.TotalMovido; }
+    }
+
+    // Reparto de la clasificación ABC por CANTIDAD DE ITEMS. Ese es el hallazgo
+    // de Pareto: no que la clase A mueva mucho (eso es su definición), sino que
+    // sean poquísimos items los que lo hacen.
+    int countA = 0, countB = 0, countC = 0;
+    foreach (var a in Model.Abc)
+    {
+        if (a.Clase == "A") { countA++; }
+        else if (a.Clase == "B") { countB++; }
+        else { countC++; }
+    }
+    var totalAbc = Model.Abc.Count;
+}
+
+<div class="page-head">
+    <div>
+        <h1>Inicio</h1>
+        <p class="subtitle">Estado del inventario y actividad de los últimos @Model.DiasVentana días</p>
     </div>
-</main>
+</div>
+
+@*  ============================================================
+    Barra de escaneo
+    ============================================================
+    Va arriba de todo y con el foco puesto: la pistola lectora funciona en modo
+    "keyboard wedge" (el sistema la ve como un teclado), así que escanear
+    equivale a teclear el código y un Enter. Con el foco ya puesto, se puede
+    llegar, escanear y caer en el item sin tocar el mouse.
+*@
+<div class="scan-bar">
+    <span class="scan-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" />
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+            <line x1="7" y1="12" x2="17" y2="12" />
+        </svg>
+    </span>
+    <input type="text" id="scanInput" autocomplete="off"
+           placeholder="Escanea un código o escríbelo y pulsa Enter…" />
+    <div class="scan-msg" id="scanMsg"></div>
+</div>
+
+@*  ============================================================
+    KPIs
+    ============================================================ *@
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="kpi">
+            <div class="kpi-label">Items activos</div>
+            <div class="kpi-value num">@Model.Kpis.TotalItems</div>
+            <div class="kpi-foot">@Model.Kpis.TotalUnidades.ToString("N0") unidades en total</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi @(Model.Kpis.ItemsAgotados > 0 ? "is-danger" : "")">
+            <div class="kpi-label">Agotados</div>
+            <div class="kpi-value num">@Model.Kpis.ItemsAgotados</div>
+            <div class="kpi-foot">sin una sola unidad disponible</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi @(Model.Kpis.ItemsBajoMinimo > 0 ? "is-warning" : "")">
+            <div class="kpi-label">Bajo mínimo</div>
+            <div class="kpi-value num">@Model.Kpis.ItemsBajoMinimo</div>
+            <div class="kpi-foot">llegaron a su punto de reorden</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi">
+            <div class="kpi-label">Movimientos hoy</div>
+            <div class="kpi-value num">@Model.Kpis.MovimientosHoy</div>
+            <div class="kpi-foot">entradas y salidas registradas</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+
+    @*  ============================================================
+        Reposición urgente (días de cobertura)
+        ============================================================ *@
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header card-header-flex">
+                <span>Reposición urgente</span>
+                <span class="hint">ordenado por cuándo se agota, no por cantidad</span>
+            </div>
+            <div class="card-body">
+                @if (Model.Reposicion.Count == 0)
+                {
+                    <div class="empty">
+                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                        <div>Nada por reponer. Ningún item está bajo su mínimo ni se agota en las próximas dos semanas.</div>
+                    </div>
+                }
+                else
+                {
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th class="text-end">Existencia</th>
+                                <th class="text-end">Consumo</th>
+                                <th>Se agota</th>
+                                @if (Model.PuedeRegistrarMovimiento)
+                                {
+                                    <th></th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in Model.Reposicion)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="cell-main">@r.Nombre</div>
+                                        <div class="cell-sub">@r.Codigo</div>
+                                    </td>
+                                    <td class="text-end num">
+                                        @if (r.Cantidad == 0)
+                                        {
+                                            <span class="badge bg-danger">Agotado</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="@(r.Cantidad <= r.StockMinimo ? "text-warning fw-semibold" : "")">@r.Cantidad</span>
+                                            <span class="text-muted-sm"> / @r.StockMinimo mín.</span>
+                                        }
+                                    </td>
+                                    <td class="text-end num text-muted-sm">
+                                        @if (r.ConsumoDiario > 0)
+                                        {
+                                            @(r.ConsumoDiario.ToString("0.##") + " /día")
+                                        }
+                                        else
+                                        {
+                                            <text>—</text>
+                                        }
+                                    </td>
+                                    <td>
+                                        @*  DiasCobertura null = no hay salidas recientes, así que no
+                                            hay ritmo con el cual proyectar. Se dice explícitamente
+                                            en vez de mostrar un cero engañoso. *@
+                                        @if (!r.DiasCobertura.HasValue)
+                                        {
+                                            <span class="text-muted-sm">sin consumo reciente</span>
+                                        }
+                                        else if (r.DiasCobertura.Value <= 3)
+                                        {
+                                            <span class="badge bg-danger">en @r.DiasCobertura d</span>
+                                            <div class="cell-sub">@r.FechaAgotamiento.Value.ToString("dd MMM")</div>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-warning">en @r.DiasCobertura d</span>
+                                            <div class="cell-sub">@r.FechaAgotamiento.Value.ToString("dd MMM")</div>
+                                        }
+                                    </td>
+                                    @if (Model.PuedeRegistrarMovimiento)
+                                    {
+                                        <td class="text-end">
+                                            <a href="@Url.Action("Detalles", "Items", new { id = r.Id })" class="btn btn-sm btn-outline-secondary">Reponer</a>
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+
+    @*  ============================================================
+        Top de items más movidos
+        ============================================================ *@
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header card-header-flex">
+                <span>Más movidos</span>
+                <span class="hint">últimos @Model.DiasVentana días</span>
+            </div>
+            <div class="card-body">
+                @if (Model.MasMovidos.Count == 0)
+                {
+                    <div class="empty">Sin movimientos registrados en los últimos @Model.DiasVentana días.</div>
+                }
+                else
+                {
+                    <div class="bar-legend mb-3">
+                        <span><span class="dot dot-in"></span>Entradas</span>
+                        <span><span class="dot dot-out"></span>Salidas</span>
+                    </div>
+
+                    foreach (var m in Model.MasMovidos)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-baseline gap-2">
+                                <a href="@Url.Action("Detalles", "Items", new { id = m.Id })" class="cell-main text-truncate">@m.Nombre</a>
+                                <span class="num text-muted-sm">@m.TotalMovido</span>
+                            </div>
+                            @*  Las dos barras se escalan contra el item que más se movió,
+                                no contra su propio total: así se comparan volúmenes entre
+                                items y además se ve el reparto entrada/salida de cada uno. *@
+                            <div class="bar">
+                                <div class="seg-in" style="width:@(Pct(m.TotalEntradas, maxMovido))%"></div>
+                                <div class="seg-out" style="width:@(Pct(m.TotalSalidas, maxMovido))%"></div>
+                            </div>
+                            <div class="cell-sub mt-1">@m.NumMovimientos movimientos · @m.TotalEntradas entradas · @m.TotalSalidas salidas</div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
+    @*  ============================================================
+        Clasificación ABC (Pareto)
+        ============================================================ *@
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header card-header-flex">
+                <span>Clasificación ABC</span>
+                <span class="hint">regla 80/20 sobre el movimiento</span>
+            </div>
+            <div class="card-body">
+                @if (totalAbc == 0)
+                {
+                    <div class="empty">Hacen falta movimientos registrados para poder clasificar los items.</div>
+                }
+                else
+                {
+                    <div class="abc-bar mb-2">
+                        @if (countA > 0)
+                        {
+                            <div class="abc-a" style="width:@(Pct(countA, totalAbc))%" title="@countA items de clase A">A</div>
+                        }
+                        @if (countB > 0)
+                        {
+                            <div class="abc-b" style="width:@(Pct(countB, totalAbc))%" title="@countB items de clase B">B</div>
+                        }
+                        @if (countC > 0)
+                        {
+                            <div class="abc-c" style="width:@(Pct(countC, totalAbc))%" title="@countC items de clase C">C</div>
+                        }
+                    </div>
+
+                    <p class="text-muted-sm">
+                        <strong>@countA</strong> de @totalAbc items concentran el 80% del movimiento (clase A).
+                        Son los que conviene no quedarse sin ellos nunca.
+                        @if (countC > 0)
+                        {
+                            <text>Los @countC de clase C casi no se mueven: ahí hay dinero parado.</text>
+                        }
+                    </p>
+
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th style="width:36px"></th>
+                                <th>Item</th>
+                                <th class="text-end">Volumen</th>
+                                <th class="text-end">% del total</th>
+                                <th class="text-end">Acumulado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{ var mostrados = 0; }
+                            @foreach (var a in Model.Abc)
+                            {
+                                // Se listan solo los de clase A (y como mucho 8): la cola C
+                                // es larga por definición y no aporta nada leerla acá.
+                                if (a.Clase != "A" || mostrados >= 8) { continue; }
+                                mostrados++;
+                                <tr>
+                                    <td><span class="clase-tag a">A</span></td>
+                                    <td>
+                                        <div class="cell-main">@a.Nombre</div>
+                                        <div class="cell-sub">@a.Codigo</div>
+                                    </td>
+                                    <td class="text-end num">@a.Volumen</td>
+                                    <td class="text-end num text-muted-sm">@a.PorcentajeIndividual.ToString("0.#")%</td>
+                                    <td class="text-end num text-muted-sm">@a.PorcentajeAcumulado.ToString("0.#")%</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+
+    @*  ============================================================
+        Bitácora reciente — solo con permiso HISTORIAL_VER
+        ============================================================ *@
+    <div class="col-lg-5">
+        @if (Model.PuedeVerBitacora)
+        {
+            <div class="card h-100">
+                <div class="card-header card-header-flex">
+                    <span>Actividad reciente</span>
+                    <span class="hint">quién hizo qué</span>
+                </div>
+                <div class="card-body">
+                    @if (Model.Bitacora.Count == 0)
+                    {
+                        <div class="empty">Todavía no hay actividad registrada.</div>
+                    }
+                    else
+                    {
+                        <ul class="feed">
+                            @foreach (var b in Model.Bitacora)
+                            {
+                                var claseAccion = b.Accion == "ALTA" ? "accion-alta"
+                                                : b.Accion == "BAJA" ? "accion-baja"
+                                                : "accion-modificacion";
+                                var verbo = b.Accion == "ALTA" ? "creó"
+                                          : b.Accion == "BAJA" ? "eliminó"
+                                          : "modificó";
+                                var nombreUsuario = string.IsNullOrEmpty(b.NombreUsuario) ? "Usuario eliminado" : b.NombreUsuario;
+
+                                <li>
+                                    <span class="avatar @claseAccion">@nombreUsuario.Substring(0, 1).ToUpper()</span>
+                                    <div class="feed-body">
+                                        <p class="feed-text">
+                                            <strong>@nombreUsuario</strong> @verbo
+                                            <a href="@Url.Action("Detalles", "Items", new { id = b.IdItem })">@(string.IsNullOrEmpty(b.NombreItem) ? "un item" : b.NombreItem)</a>
+                                        </p>
+                                        <div class="feed-meta">@HaceCuanto(b.Fecha) · @b.Fecha.ToString("dd/MM HH:mm")</div>
+                                        @if (!string.IsNullOrEmpty(b.Detalle))
+                                        {
+                                            <div class="feed-detalle" title="@b.Detalle">@b.Detalle</div>
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card h-100">
+                <div class="card-header">Actividad reciente</div>
+                <div class="card-body">
+                    <div class="empty">Tu rol no tiene acceso a la bitácora de auditoría.</div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        $(function () {
+            var $input = $('#scanInput');
+            var $msg = $('#scanMsg');
+
+            $input.focus();
+
+            // Una pistola lectora "teclea" el código y manda un Enter (keyCode 13).
+            // Escuchar ese Enter es todo lo que hace falta: no requiere librería
+            // ni permisos, el sistema la reconoce como un teclado más.
+            $input.on('keypress', function (e) {
+                if (e.which !== 13) { return; }
+                e.preventDefault();
+
+                var codigo = $.trim($input.val());
+                if (!codigo) { return; }
+
+                $msg.removeClass('error ok').text('Buscando…');
+
+                $.getJSON('@Url.Action("BuscarPorCodigo", "Items")', { codigo: codigo })
+                    .done(function (item) {
+                        if (item && item.Id) {
+                            $msg.addClass('ok').text('Encontrado: ' + item.Nombre);
+                            window.location.href = '@Url.Action("Detalles", "Items")/' + item.Id;
+                        } else {
+                            $msg.addClass('error').text('No hay ningún item con el código "' + codigo + '".');
+                            $input.select();
+                        }
+                    })
+                    .fail(function () {
+                        $msg.addClass('error').text('No se pudo consultar el código. Revisa la conexión.');
+                    });
+            });
+        });
+    </script>
+}

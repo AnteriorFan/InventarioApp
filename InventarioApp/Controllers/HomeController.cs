@@ -1,37 +1,45 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Web;
+using InventarioApp.Services;
 using System.Web.Mvc;
 
 namespace InventarioApp.Controllers
 {
+    [Authorize]
     public class HomeController : Controller
     {
+        // Ventana de análisis de las métricas de movimiento. 30 días es lo
+        // suficientemente largo para que el promedio no se dispare por un pico
+        // de un solo día, y lo suficientemente corto para reflejar el ritmo
+        // actual y no el del trimestre pasado.
+        private const int DiasVentana = 30;
+
+        private readonly IDashboardService _dashboardService;
+        private readonly IPermisoService _permisoService;
+
+        public HomeController() : this(new DashboardService(), new PermisoService()) { }
+
+        public HomeController(IDashboardService dashboardService, IPermisoService permisoService)
+        {
+            _dashboardService = dashboardService;
+            _permisoService = permisoService;
+        }
+
         public ActionResult Index()
         {
-            return View();
-        }
+            //  Los permisos se resuelven acá, no en la vista.
+            //
+            //  El de bitácora además decide si la consulta se ejecuta: no basta
+            //  con esconder el widget con un @if, porque el dato ya habría
+            //  viajado desde la base hasta el servidor. Un EMPLEADO ve el estado
+            //  del inventario; quién hizo cada cosa es otra conversación.
+            bool puedeVerBitacora = _permisoService.UsuarioTienePermiso(User.Identity.Name, "HISTORIAL_VER");
 
-        public ActionResult About()
-        {
-            ViewBag.Message = "Your application description page.";
+            var modelo = _dashboardService.ObtenerResumen(DiasVentana, puedeVerBitacora);
 
-            return View();
-        }
+            modelo.PuedeVerBitacora = puedeVerBitacora;
+            modelo.PuedeRegistrarMovimiento =
+                _permisoService.UsuarioTienePermiso(User.Identity.Name, "MOVIMIENTOS_REGISTRAR");
 
-        public ActionResult Contact()
-        {
-            ViewBag.Message = "Your contact page.";
-
-            return View();
-        }
-
-        public ActionResult Saludo()
-        {
-            ViewBag.Message = "Hola, bienvenido a la aplicación de inventario.";
-
-            return View();
+            return View(modelo);
         }
     }
 }

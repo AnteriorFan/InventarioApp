@@ -14,13 +14,14 @@ namespace InventarioApp.Services
 
         void Actualizar(Item item); // Método que actualiza un item existente
 
-        void Eliminar(int id); // Método que elimina un item por su ID
+        void Eliminar(int id); // Método que elimina un item por su ID}
+        Item ObtenerPorCodigo(string codigo); // Método que obtiene un item por su código
     }
 
     public class ItemService : IItemService // Clase que implementa la interfaz
     {
         private readonly IItemRepository _itemRepository; // Referencia al repositorio (solo lectura)
-        public ItemService() : this(new ItemRepository()) { }
+        public ItemService() : this(new ItemRepository()) { } // Constructor por defecto que crea una instancia del repositorio
 
         // Constructor: recibe la inyección de dependencia del repositorio
         public ItemService(IItemRepository itemRepository)
@@ -52,6 +53,11 @@ namespace InventarioApp.Services
         public void Eliminar(int id)
         {
            _itemRepository.Eliminar(id); // Llama al método Eliminar() del repositorio
+        }
+
+        public Item ObtenerPorCodigo(string codigo)
+        {
+            return _itemRepository.ObtenerPorCodigo(codigo);
         }
 
     }

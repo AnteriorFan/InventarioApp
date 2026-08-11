@@ -1,0 +1,11 @@
+﻿@model InventarioApp.Models.Estado
+@{ ViewBag.Title = "Nuevo Estado"; }
+
+<h2>Nuevo Estado</h2>
+@using (Html.BeginForm())
+{
+    @Html.AntiForgeryToken()
+    <div class="mb-3">@Html.LabelFor(m => m.Nombre) @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control" })</div>
+    <div class="mb-3">@Html.LabelFor(m => m.Descripcion) @Html.TextBoxFor(m => m.Descripcion, new { @class = "form-control" })</div>
+    <button type="submit" class="btn btn-primary">Guardar</button>
+}

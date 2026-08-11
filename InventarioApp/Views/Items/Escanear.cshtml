@@ -1,0 +1,124 @@
+@{
+    ViewBag.Title = "Escanear";
+}
+
+<div class="page-head">
+    <div>
+        <h1>Escanear código</h1>
+        <p class="subtitle">Con la pistola lectora o con la cámara del celular</p>
+    </div>
+    <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Volver a items</a>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-5">
+        <div class="card mb-4">
+            <div class="card-header">Lector físico</div>
+            <div class="card-body">
+                <p class="text-muted-sm">
+                    La pistola funciona como un teclado: escanea y el código se escribe solo,
+                    con un Enter al final. Solo asegúrate de que el cursor esté en el campo.
+                </p>
+                <input type="text" id="inputCodigoPistola" class="form-control mono"
+                       placeholder="Esperando escaneo…" autocomplete="off" autofocus />
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Cámara</div>
+            <div class="card-body">
+                <button type="button" id="btnIniciarCamara" class="btn btn-primary mb-3">Activar cámara</button>
+                <div id="readerCamara" style="width:100%"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div id="resultadoBusqueda">
+            <div class="card">
+                <div class="card-body">
+                    <div class="empty">
+                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                            <path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                            <line x1="7" y1="12" x2="17" y2="12" />
+                        </svg>
+                        <div>Escanea un código para ver el item aquí.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script>
+        // Escapa el texto antes de meterlo en el HTML: el código viene de un
+        // escaneo, o sea de fuera de la app, y no se inyecta sin filtrar.
+        function esc(txt) {
+            return $('<div>').text(txt == null ? '' : txt).html();
+        }
+
+        function buscarItem(codigo) {
+            $.get('@Url.Action("BuscarPorCodigo")', { codigo: codigo }, function (item) {
+                if (item && item.Id) {
+                    var bajo = item.Cantidad === 0
+                        ? '<span class="badge bg-danger">Agotado</span>'
+                        : (item.Cantidad <= item.StockMinimo
+                            ? '<span class="badge bg-warning">' + item.Cantidad + ' · bajo mínimo</span>'
+                            : '<span class="badge bg-success">' + item.Cantidad + ' ' + esc(item.UnidadMedida || '') + '</span>');
+
+                    $('#resultadoBusqueda').html(
+                        '<div class="card"><div class="card-body">' +
+                            '<div class="d-flex justify-content-between align-items-start gap-3 mb-3">' +
+                                '<div>' +
+                                    '<h2 class="mb-1">' + esc(item.Nombre) + '</h2>' +
+                                    '<span class="badge-codigo">' + esc(item.Codigo) + '</span>' +
+                                '</div>' +
+                                '<div>' + bajo + '</div>' +
+                            '</div>' +
+                            '<dl class="row mb-3" style="font-size:.875rem">' +
+                                '<dt class="col-4 fw-normal text-muted">Ubicación</dt>' +
+                                '<dd class="col-8">' + esc(item.Ubicacion || '—') + '</dd>' +
+                                '<dt class="col-4 fw-normal text-muted">Categoría</dt>' +
+                                '<dd class="col-8">' + esc(item.NombreCategoria || '—') + '</dd>' +
+                                '<dt class="col-4 fw-normal text-muted">Descripción</dt>' +
+                                '<dd class="col-8 mb-0">' + esc(item.Descripcion || '—') + '</dd>' +
+                            '</dl>' +
+                            '<a href="@Url.Action("Detalles", "Items")/' + item.Id + '" class="btn btn-primary">Abrir item</a>' +
+                        '</div></div>'
+                    );
+                } else {
+                    $('#resultadoBusqueda').html(
+                        '<div class="alert alert-danger">No se encontró ningún item con el código "' + esc(codigo) + '".</div>');
+                }
+            });
+        }
+
+        $(function () {
+            var $inputPistola = $('#inputCodigoPistola');
+            $inputPistola.focus();
+
+            $inputPistola.on('keypress', function (e) {
+                if (e.which !== 13) { return; }
+                e.preventDefault();
+                var codigo = $.trim($(this).val());
+                if (codigo) { buscarItem(codigo); }
+                $(this).val('');   // se limpia para dejar listo el siguiente escaneo
+            });
+
+            $('#btnIniciarCamara').on('click', function () {
+                var html5QrCode = new Html5Qrcode("readerCamara");
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: 250 },
+                    function (decodedText) {
+                        buscarItem(decodedText);
+                        html5QrCode.stop();
+                    }
+                );
+            });
+        });
+    </script>
+}

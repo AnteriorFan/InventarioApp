@@ -15,8 +15,13 @@ namespace InventarioApp.Models
         public string NombreCategoria { get; set; }
         public int Cantidad { get; set; }
 
+        // Punto de reorden: cuando Cantidad cae hasta aca, el item aparece en
+        // "Reposicion urgente" del dashboard. Reemplaza al "< 10" que antes
+        // estaba hardcodeado en la vista Items/Index.
+        public int StockMinimo { get; set; }
+
         public string UnidadMedida { get; set; }
         public string Ubicacion { get; set; }
-        public string ImageS3Key { get; set; }
+        public string ImagenS3Key { get; set; }
     }
 }

@@ -1,0 +1,15 @@
+@model InventarioApp.Models.Espacio
+@{ ViewBag.Title = "Nuevo Espacio"; }
+
+<h2>Nuevo Espacio</h2>
+@using (Html.BeginForm())
+{
+    @Html.AntiForgeryToken()
+    <div class="mb-3">
+        @Html.Label("Área")
+        @Html.DropDownList("IdArea", (SelectList)ViewBag.Areas, "-- Selecciona área --", new { @class = "form-select" })
+    </div>
+    <div class="mb-3">@Html.LabelFor(m => m.Nombre) @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control" })</div>
+    <div class="mb-3">@Html.LabelFor(m => m.Descripcion) @Html.TextBoxFor(m => m.Descripcion, new { @class = "form-control" })</div>
+    <button type="submit" class="btn btn-primary">Guardar</button>
+}

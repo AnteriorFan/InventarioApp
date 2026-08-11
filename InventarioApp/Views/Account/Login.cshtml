@@ -1,0 +1,44 @@
+@model InventarioApp.Models.LoginViewModel
+
+@{
+    ViewBag.Title = "Iniciar sesión";
+}
+
+<div class="row justify-content-center" style="margin-top:6vh">
+    <div class="col-md-5 col-lg-4">
+
+        <div class="text-center mb-4">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                 stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                <line x1="12" y1="22.08" x2="12" y2="12" />
+            </svg>
+            <h1 class="mt-2 mb-1">Inventario</h1>
+            <p class="text-muted-sm mb-0">Entra con tu usuario para continuar</p>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                @Html.ValidationSummary(true, "", new { @class = "validation-summary-errors mb-3" })
+
+                @using (Html.BeginForm())
+                {
+                    @Html.AntiForgeryToken()
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.UsuarioLogin, "Usuario", new { @class = "form-label" })
+                        @Html.TextBoxFor(m => m.UsuarioLogin, new { @class = "form-control", autofocus = "autofocus", autocomplete = "username" })
+                    </div>
+
+                    <div class="mb-4">
+                        @Html.LabelFor(m => m.Password, "Contraseña", new { @class = "form-label" })
+                        @Html.PasswordFor(m => m.Password, new { @class = "form-control", autocomplete = "current-password" })
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Entrar</button>
+                }
+            </div>
+        </div>
+    </div>
+</div>

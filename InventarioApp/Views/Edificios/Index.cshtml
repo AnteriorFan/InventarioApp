@@ -1,0 +1,27 @@
+﻿@model IEnumerable<InventarioApp.Models.Edificio>
+@{ ViewBag.Title = "Edificios"; }
+
+<h2>Edificios</h2>
+<a href="@Url.Action("Create")" class="btn btn-primary mb-3">+ Nuevo edificio</a>
+
+<table class="table table-striped">
+    <thead><tr><th>Nombre</th><th>Descripción</th><th>Acciones</th></tr></thead>
+    <tbody>
+        @foreach (var e in Model)
+        {
+            <tr>
+                <td>@e.Nombre</td>
+                <td>@e.Descripcion</td>
+                <td>
+                    <a href="@Url.Action("Edit", new { id = e.Id })" class="btn btn-sm btn-outline-secondary">Editar</a>
+                    @using (Html.BeginForm("Delete", "Edificios", FormMethod.Post, new { onsubmit = "return confirm('¿Eliminar este edificio?');", style = "display:inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@e.Id" />
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

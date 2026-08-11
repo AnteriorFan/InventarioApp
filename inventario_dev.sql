@@ -1,84 +1,1505 @@
-CREATE TABLE categorias (
-    id_categoria    NUMBER          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    nombre          VARCHAR2(100)   NOT NULL,
-    descripcion     VARCHAR2(500)
+--==============================================================================
+--  INVENTARIO - Script de base de datos (DEV)  -  Oracle
+--------------------------------------------------------------------------------
+--  Se ejecuta de arriba hacia abajo, en este orden:
+--
+--    0. Prerrequisitos (tablas base que este script asume que ya existen)
+--    1. Seguridad: roles, permisos y sus relaciones
+--    2. Estructura, catalogos y activos
+--    3. Datos iniciales (seeds)
+--    4. Paquetes PL/SQL
+--    5. Migracion final: retirar la columna vieja usuarios.rol
+--    6. Consultas de verificacion (opcionales, comentadas)
+--
+--  Notas:
+--    - Las secciones 1 y 2 son DDL: solo corren UNA vez. Si ya creaste las
+--      tablas, saltatelas o vas a recibir ORA-00955 (nombre ya usado).
+--    - Los paquetes usan CREATE OR REPLACE, asi que la seccion 4 se puede
+--      volver a correr cuantas veces quieras sin problema.
+--    - La seccion 5 es de una sola vez y es DESTRUCTIVA (DROP COLUMN). Leer
+--      el encabezado de esa seccion antes de correrla.
+--    - Guardar este archivo en UTF-8. Si al correrlo en SQL*Plus ves acentos
+--      raros, exporta NLS_LANG con AL32UTF8 antes de conectarte.
+--==============================================================================
+
+
+--==============================================================================
+-- 0. PRERREQUISITOS
+--==============================================================================
+--  Este script NO crea las tablas base del inventario. Se asume que ya existen
+--  en el esquema, porque son de la primera version del proyecto:
+--
+--    usuarios                (id_usuario, nombre, apellido, usuario_login,
+--                             password_hash, rol, activo)
+--                            OJO: 'rol' es la columna vieja de texto. La 1.5 le
+--                            agrega id_rol y la 5 la borra. Al final del script
+--                            usuarios queda con id_rol, sin rol.
+--    categorias              (id_categoria, nombre, descripcion)
+--    items                   (id_item, codigo, nombre, descripcion, id_categoria,
+--                             cantidad, unidad_medida, ubicacion, imagen_s3_key,
+--                             activo, fecha_modif)
+--    movimientos_inventario  (id_movimiento, id_item, tipo_movimiento, cantidad,
+--                             fecha, observaciones)
+--    historial_items         (id_historial, id_item, id_usuario, accion, fecha,
+--                             detalle)
+--
+--  Si algun dia hay que levantar la BD desde cero, ese DDL deberia vivir aqui
+--  arriba (o en un archivo aparte tipo 00_tablas_base.sql).
+--==============================================================================
+
+
+--==============================================================================
+-- 1. SEGURIDAD: ROLES Y PERMISOS
+--==============================================================================
+--  Como funciona el modelo:
+--    roles             -> los roles del sistema (EMPLEADO, JEFE_AREA, JEFE)
+--    permisos          -> el catalogo de acciones que se pueden autorizar
+--    rol_permisos      -> que permisos trae cada rol POR DEFECTO
+--    usuario_permisos  -> excepciones por usuario individual, que pisan al rol
+--
+--  Regla final: permisos = (los del rol + los concedidos 'S') - (los negados 'N')
+--------------------------------------------------------------------------------
+
+-- 1.1 Roles ---------------------------------------------------------------
+CREATE TABLE roles (
+    id_rol      NUMBER        GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre      VARCHAR2(50)  NOT NULL,
+    descripcion VARCHAR2(500),
+    activo      CHAR(1)       DEFAULT 'S' NOT NULL,
+    CONSTRAINT uq_roles_nombre UNIQUE (nombre),
+    CONSTRAINT ck_roles_activo CHECK (activo IN ('S','N'))
 );
 
-CREATE TABLE items (
-    id_item         NUMBER          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    codigo          VARCHAR2(50)    NOT NULL,
-    nombre          VARCHAR2(200)   NOT NULL,
-    descripcion     VARCHAR2(1000),
-    id_categoria    NUMBER,
-    cantidad        NUMBER          DEFAULT 0 NOT NULL,
-    unidad_medida   VARCHAR2(20),
-    ubicacion       VARCHAR2(100),
-    imagen_s3_key   VARCHAR2(500),
-    activo          CHAR(1)         DEFAULT 'S' NOT NULL,
-    fecha_creacion  DATE            DEFAULT SYSDATE,
-    fecha_modif     DATE,
-    CONSTRAINT uq_items_codigo UNIQUE (codigo),
-    CONSTRAINT fk_items_categoria FOREIGN KEY (id_categoria) REFERENCES categorias (id_categoria),
-    CONSTRAINT ck_items_cantidad CHECK (cantidad >= 0),
-    CONSTRAINT ck_items_activo CHECK (activo IN ('S','N'))
+-- 1.2 Catalogo de permisos ------------------------------------------------
+CREATE TABLE permisos (
+    id_permiso  NUMBER        GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre      VARCHAR2(50)  NOT NULL,
+    descripcion VARCHAR2(500),
+    CONSTRAINT uq_permisos_nombre UNIQUE (nombre)
 );
 
-CREATE TABLE movimientos_inventario (
-    id_movimiento    NUMBER          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    id_item          NUMBER          NOT NULL,
-    tipo_movimiento  VARCHAR2(10)    NOT NULL,
-    cantidad         NUMBER          NOT NULL,
-    fecha            DATE            DEFAULT SYSDATE,
-    observaciones    VARCHAR2(500),
-    CONSTRAINT fk_mov_item FOREIGN KEY (id_item) REFERENCES items (id_item),
-    CONSTRAINT ck_mov_tipo CHECK (tipo_movimiento IN ('ENTRADA','SALIDA')),
-    CONSTRAINT ck_mov_cantidad CHECK (cantidad > 0)
+-- 1.3 Permisos que trae cada rol POR DEFECTO ------------------------------
+CREATE TABLE rol_permisos (
+    id_rol     NUMBER NOT NULL,
+    id_permiso NUMBER NOT NULL,
+    CONSTRAINT pk_rol_permisos PRIMARY KEY (id_rol, id_permiso),
+    CONSTRAINT fk_rp_rol     FOREIGN KEY (id_rol)     REFERENCES roles (id_rol),
+    CONSTRAINT fk_rp_permiso FOREIGN KEY (id_permiso) REFERENCES permisos (id_permiso)
 );
 
-CREATE TABLE usuarios (
-    id_usuario      NUMBER          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    nombre          VARCHAR2(100)   NOT NULL,
-    apellido        VARCHAR2(100)   NOT NULL,
-    usuario_login   VARCHAR2(50)    NOT NULL,
-    password_hash   VARCHAR2(256)   NOT NULL,
-    rol             VARCHAR2(20)    NOT NULL,
-    activo          CHAR(1)         DEFAULT 'S' NOT NULL,
-    fecha_creacion  DATE            DEFAULT SYSDATE,
-    CONSTRAINT uq_usuarios_login UNIQUE (usuario_login),
-    CONSTRAINT ck_usuarios_rol CHECK (rol IN ('EMPLEADO','ADMIN','JEFE')),
-    CONSTRAINT ck_usuarios_activo CHECK (activo IN ('S','N'))
+-- 1.4 Excepciones POR USUARIO INDIVIDUAL ----------------------------------
+--     Esto es lo que resuelve el caso de "empleados especificos".
+CREATE TABLE usuario_permisos (
+    id_usuario  NUMBER   NOT NULL,
+    id_permiso  NUMBER   NOT NULL,
+    concedido   CHAR(1)  NOT NULL,  -- 'S' = se le DA este permiso aunque su rol no lo tenga
+                                    -- 'N' = se le QUITA este permiso aunque su rol si lo tenga
+    CONSTRAINT pk_usuario_permisos PRIMARY KEY (id_usuario, id_permiso),
+    CONSTRAINT fk_up_usuario   FOREIGN KEY (id_usuario) REFERENCES usuarios (id_usuario),
+    CONSTRAINT fk_up_permiso   FOREIGN KEY (id_permiso) REFERENCES permisos (id_permiso),
+    CONSTRAINT ck_up_concedido CHECK (concedido IN ('S','N'))
 );
 
-CREATE TABLE historial_items (
-    id_historial    NUMBER          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    id_item         NUMBER          NOT NULL,
-    id_usuario      NUMBER          NOT NULL,
-    accion          VARCHAR2(20)    NOT NULL,
-    fecha           DATE            DEFAULT SYSDATE,
-    detalle         VARCHAR2(1000),
-    CONSTRAINT fk_hist_item FOREIGN KEY (id_item) REFERENCES items (id_item),
-    CONSTRAINT fk_hist_usuario FOREIGN KEY (id_usuario) REFERENCES usuarios (id_usuario),
-    CONSTRAINT ck_hist_accion CHECK (accion IN ('ALTA','MODIFICACION','BAJA'))
+-- 1.5 Enganchar usuarios con roles ----------------------------------------
+ALTER TABLE usuarios ADD id_rol NUMBER;
+ALTER TABLE usuarios ADD CONSTRAINT fk_usuarios_rol FOREIGN KEY (id_rol) REFERENCES roles (id_rol);
+
+-- Aca la columna vieja usuarios.rol (texto) TODAVIA existe: las semillas de la
+-- seccion 3.1 la siguen usando. Se migra y se borra al final, en la seccion 5,
+-- que es el unico punto del script donde ya estan sembrados los roles y los
+-- packages estan compilados sin referencias a ella.
+
+
+--==============================================================================
+-- 2. ESTRUCTURA Y CATALOGOS
+--==============================================================================
+--  2.1 - 2.3  Ubicaciones (Fase 1): edificios > areas > espacios
+--  2.4 - 2.5  Marcas y modelos (catalogo con auditoria)
+--  2.6 - 2.7  Estados y tipos de movimiento (catalogos chicos, sin auditoria)
+--  2.8        Activos: la tabla central, depende de todas las anteriores
+--  2.9        Constraints de unicidad opcionales
+--
+--  Los que llevan auditoria repiten el mismo bloque de columnas:
+--  creado_por / actualizado_por / fecha_creacion / fecha_actualizacion, mas
+--  borrado logico con 'activo'.
+--------------------------------------------------------------------------------
+
+-- 2.1 Edificios -----------------------------------------------------------
+CREATE TABLE edificios (
+    id_edificio          NUMBER         GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre               VARCHAR2(100)  NOT NULL,
+    descripcion          VARCHAR2(1000),
+    activo               CHAR(1)        DEFAULT 'S' NOT NULL,
+    creado_por           NUMBER,
+    actualizado_por      NUMBER,
+    fecha_creacion       DATE           DEFAULT SYSDATE,
+    fecha_actualizacion  DATE,
+    CONSTRAINT fk_edificios_creado_por      FOREIGN KEY (creado_por)      REFERENCES usuarios (id_usuario),
+    CONSTRAINT fk_edificios_actualizado_por FOREIGN KEY (actualizado_por) REFERENCES usuarios (id_usuario),
+    CONSTRAINT ck_edificios_activo CHECK (activo IN ('S','N'))
 );
 
+-- 2.2 Areas (pertenecen a un edificio) ------------------------------------
+CREATE TABLE areas (
+    id_area              NUMBER         GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_edificio          NUMBER         NOT NULL,
+    nombre               VARCHAR2(100)  NOT NULL,
+    descripcion          VARCHAR2(1000),
+    activo               CHAR(1)        DEFAULT 'S' NOT NULL,
+    creado_por           NUMBER,
+    actualizado_por      NUMBER,
+    fecha_creacion       DATE           DEFAULT SYSDATE,
+    fecha_actualizacion  DATE,
+    CONSTRAINT fk_areas_edificio        FOREIGN KEY (id_edificio)     REFERENCES edificios (id_edificio),
+    CONSTRAINT fk_areas_creado_por      FOREIGN KEY (creado_por)      REFERENCES usuarios (id_usuario),
+    CONSTRAINT fk_areas_actualizado_por FOREIGN KEY (actualizado_por) REFERENCES usuarios (id_usuario),
+    CONSTRAINT ck_areas_activo CHECK (activo IN ('S','N'))
+);
 
-CREATE OR REPLACE PACKAGE BODY pkg_items AS
+-- 2.3 Espacios (pertenecen a un area) -------------------------------------
+CREATE TABLE espacios (
+    id_espacio           NUMBER         GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_area              NUMBER         NOT NULL,
+    nombre               VARCHAR2(100)  NOT NULL,
+    descripcion          VARCHAR2(1000),
+    activo               CHAR(1)        DEFAULT 'S' NOT NULL,
+    creado_por           NUMBER,
+    actualizado_por      NUMBER,
+    fecha_creacion       DATE           DEFAULT SYSDATE,
+    fecha_actualizacion  DATE,
+    CONSTRAINT fk_espacios_area            FOREIGN KEY (id_area)         REFERENCES areas (id_area),
+    CONSTRAINT fk_espacios_creado_por      FOREIGN KEY (creado_por)      REFERENCES usuarios (id_usuario),
+    CONSTRAINT fk_espacios_actualizado_por FOREIGN KEY (actualizado_por) REFERENCES usuarios (id_usuario),
+    CONSTRAINT ck_espacios_activo CHECK (activo IN ('S','N'))
+);
 
-    PROCEDURE sp_listar (
+-- 2.4 Marcas --------------------------------------------------------------
+CREATE TABLE marcas (
+    id_marca             NUMBER         GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre               VARCHAR2(100)  NOT NULL,
+    descripcion          VARCHAR2(1000),
+    activo               CHAR(1)        DEFAULT 'S' NOT NULL,
+    creado_por           NUMBER,
+    actualizado_por      NUMBER,
+    fecha_creacion       DATE           DEFAULT SYSDATE,
+    fecha_actualizacion  DATE,
+    CONSTRAINT fk_marcas_creado_por      FOREIGN KEY (creado_por)      REFERENCES usuarios (id_usuario),
+    CONSTRAINT fk_marcas_actualizado_por FOREIGN KEY (actualizado_por) REFERENCES usuarios (id_usuario),
+    CONSTRAINT ck_marcas_activo CHECK (activo IN ('S','N'))
+);
+
+-- 2.5 Modelos (pertenecen a una marca) ------------------------------------
+CREATE TABLE modelos (
+    id_modelo            NUMBER         GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_marca             NUMBER         NOT NULL,
+    nombre               VARCHAR2(100)  NOT NULL,
+    descripcion          VARCHAR2(1000),
+    activo               CHAR(1)        DEFAULT 'S' NOT NULL,
+    creado_por           NUMBER,
+    actualizado_por      NUMBER,
+    fecha_creacion       DATE           DEFAULT SYSDATE,
+    fecha_actualizacion  DATE,
+    CONSTRAINT fk_modelos_marca           FOREIGN KEY (id_marca)        REFERENCES marcas (id_marca),
+    CONSTRAINT fk_modelos_creado_por      FOREIGN KEY (creado_por)      REFERENCES usuarios (id_usuario),
+    CONSTRAINT fk_modelos_actualizado_por FOREIGN KEY (actualizado_por) REFERENCES usuarios (id_usuario),
+    CONSTRAINT ck_modelos_activo CHECK (activo IN ('S','N'))
+);
+
+-- 2.6 Estados -------------------------------------------------------------
+--     Catalogo chico, sin auditoria (asi estaba en el diseno original).
+CREATE TABLE estados (
+    id_estado    NUMBER        GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre       VARCHAR2(50)  NOT NULL,
+    descripcion  VARCHAR2(500),
+    activo       CHAR(1)       DEFAULT 'S' NOT NULL,
+    CONSTRAINT ck_estados_activo CHECK (activo IN ('S','N'))
+);
+
+-- 2.7 Tipos de movimiento -------------------------------------------------
+--     Catalogo chico, sin auditoria.
+--
+--     OJO: hoy movimientos_inventario.tipo_movimiento es texto libre y
+--     pkg_movimientos.sp_registrar (seccion 4.14) compara contra los literales
+--     'ENTRADA' y 'SALIDA', que NO estan en este catalogo. Ver la nota al pie
+--     de la seccion 3.6 antes de enganchar las dos cosas.
+CREATE TABLE tipos_movimiento (
+    id_tipo_movimiento  NUMBER        GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre              VARCHAR2(50)  NOT NULL,
+    descripcion         VARCHAR2(500),
+    activo              CHAR(1)       DEFAULT 'S' NOT NULL,
+    CONSTRAINT ck_tipos_movimiento_activo CHECK (activo IN ('S','N'))
+);
+
+-- 2.8 Activos (reemplazo de items) ----------------------------------------
+--     La tabla central del modelo nuevo. Va al final de la seccion 2 porque
+--     depende de casi todo lo anterior: categorias, marcas, modelos, estados,
+--     espacios y usuarios tienen que existir antes.
+--
+--     Reutiliza categorias, la tabla del diseno simple original: no se duplica.
+--
+--     Siete FK de negocio, mas creado_por / actualizado_por:
+--       id_categoria         -> categorias
+--       id_marca             -> marcas
+--       id_modelo            -> modelos
+--       id_estado            -> estados
+--       id_ubicacion_origen  -> espacios   (donde se dio de alta)
+--       id_ubicacion_actual  -> espacios   (donde esta hoy)
+--       responsable          -> usuarios   (quien lo tiene a cargo)
+--
+--     Todas OPCIONALES (nullable). Es a proposito: se puede dar de alta un
+--     activo con lo minimo (codigo + nombre) e ir completando despues. Esto
+--     tiene una consecuencia directa en las consultas, ver pkg_activos.
+CREATE TABLE activos (
+    id_activo            NUMBER          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    codigo               VARCHAR2(100)   NOT NULL,
+    nombre               VARCHAR2(150)   NOT NULL,
+    descripcion          VARCHAR2(1000),
+    id_categoria         NUMBER,
+    id_marca             NUMBER,
+    id_modelo            NUMBER,
+    numero_serie         VARCHAR2(150),
+    id_estado            NUMBER,
+    id_ubicacion_origen  NUMBER,
+    id_ubicacion_actual  NUMBER,
+    responsable          NUMBER,
+    fecha_compra         DATE,
+    costo                NUMBER(12,2),
+    garantia_hasta       DATE,
+    observaciones        VARCHAR2(1000),
+    activo               CHAR(1)         DEFAULT 'S' NOT NULL,
+    creado_por           NUMBER,
+    actualizado_por      NUMBER,
+    fecha_creacion       DATE            DEFAULT SYSDATE,
+    fecha_actualizacion  DATE,
+    CONSTRAINT uq_activos_codigo UNIQUE (codigo),
+    CONSTRAINT fk_activos_categoria       FOREIGN KEY (id_categoria)        REFERENCES categorias (id_categoria),
+    CONSTRAINT fk_activos_marca           FOREIGN KEY (id_marca)            REFERENCES marcas (id_marca),
+    CONSTRAINT fk_activos_modelo          FOREIGN KEY (id_modelo)           REFERENCES modelos (id_modelo),
+    CONSTRAINT fk_activos_estado          FOREIGN KEY (id_estado)           REFERENCES estados (id_estado),
+    CONSTRAINT fk_activos_ubic_origen     FOREIGN KEY (id_ubicacion_origen) REFERENCES espacios (id_espacio),
+    CONSTRAINT fk_activos_ubic_actual     FOREIGN KEY (id_ubicacion_actual) REFERENCES espacios (id_espacio),
+    CONSTRAINT fk_activos_responsable     FOREIGN KEY (responsable)         REFERENCES usuarios (id_usuario),
+    CONSTRAINT fk_activos_creado_por      FOREIGN KEY (creado_por)          REFERENCES usuarios (id_usuario),
+    CONSTRAINT fk_activos_actualizado_por FOREIGN KEY (actualizado_por)     REFERENCES usuarios (id_usuario),
+    CONSTRAINT ck_activos_activo CHECK (activo IN ('S','N'))
+);
+
+--     Indices sugeridos (OPCIONAL). Oracle indexa solo la PK y el UNIQUE de
+--     codigo; las FK quedan sin indice y cada dropdown filtrado o cada borrado
+--     de un catalogo va a escanear la tabla entera. Con pocos activos no se
+--     nota, pero conviene tenerlos escritos:
+--
+-- CREATE INDEX ix_activos_categoria     ON activos (id_categoria);
+-- CREATE INDEX ix_activos_marca         ON activos (id_marca);
+-- CREATE INDEX ix_activos_modelo        ON activos (id_modelo);
+-- CREATE INDEX ix_activos_estado        ON activos (id_estado);
+-- CREATE INDEX ix_activos_ubic_actual   ON activos (id_ubicacion_actual);
+-- CREATE INDEX ix_activos_responsable   ON activos (responsable);
+
+--     PENDIENTE: lo que falta para completar la migracion items -> activos
+--     ------------------------------------------------------------------------
+--     Crear la tabla es solo el primer paso. Todavia queda decidir:
+--
+--     a) Que pasa con los datos que ya estan en items.
+--        codigo, nombre, descripcion e id_categoria pasan derecho. Pero items
+--        tiene cuatro columnas que en activos NO tienen donde caer:
+--            cantidad, unidad_medida, ubicacion (texto libre), imagen_s3_key
+--        Es un cambio de concepto: items modela EXISTENCIAS (hay 20 tornillos),
+--        activos modela UNIDADES INDIVIDUALES (este proyector, con su numero de
+--        serie). Un item con cantidad = 20 no es un activo: son veinte. Hay que
+--        definir si se explota en 20 filas, si se migran solo los unitarios, o
+--        si las dos tablas conviven representando cosas distintas.
+--
+--     b) Que pasa con movimientos_inventario e historial_items.
+--        Las dos siguen apuntando a items.id_item con FK. Mientras no se les
+--        agregue id_activo, un activo no puede tener ni movimientos ni
+--        bitacora: nace sin historial.
+--
+--     c) Cuando se apaga pkg_items.
+--        Por ahora los dos paquetes conviven a proposito. ItemsController sigue
+--        usando pkg_items y no se toca hasta que a) y b) esten resueltos.
+--
+--     No se resuelve nada de esto aca porque son decisiones de negocio, no de
+--     esquema, y elegir mal en a) significa perder datos.
+
+
+-- 2.9 Unicidad de los catalogos (OPCIONAL, descomentar si se quiere) -------
+--     Ninguna de las cuatro tablas de arriba tiene UNIQUE en 'nombre', asi que
+--     hoy se puede cargar 'Disponible' o 'Samsung' dos veces sin que la base
+--     diga nada. roles y permisos (seccion 1) si lo tienen. Si se quiere el
+--     mismo comportamiento aca:
+--
+-- ALTER TABLE marcas           ADD CONSTRAINT uq_marcas_nombre           UNIQUE (nombre);
+-- ALTER TABLE estados          ADD CONSTRAINT uq_estados_nombre          UNIQUE (nombre);
+-- ALTER TABLE tipos_movimiento ADD CONSTRAINT uq_tipos_movimiento_nombre UNIQUE (nombre);
+--
+--     En modelos la unicidad va por marca, no global: dos marcas distintas
+--     pueden tener un modelo con el mismo nombre.
+-- ALTER TABLE modelos ADD CONSTRAINT uq_modelos_marca_nombre UNIQUE (id_marca, nombre);
+
+
+-- 2.10 Punto de reorden por item: items.stock_minimo ----------------------
+--
+--  DDL sobre una tabla BASE (de la version 1 del proyecto, ver seccion 0), no
+--  sobre las tablas nuevas de esta seccion. Corre UNA sola vez: la segunda vez
+--  da ORA-01430 (la columna ya existe).
+--
+--  Por que una columna y no un umbral fijo en el codigo:
+--  hasta ahora "stock bajo" era un < 10 hardcodeado en la vista Items/Index.
+--  Ese numero trata igual a un tornillo que a un servidor. Con stock_minimo
+--  cada item declara su propio punto de reorden, y el dashboard (pkg_dashboard,
+--  seccion 4.16) puede decir cuales hay que reponer de verdad.
+--
+--  DEFAULT 5 + NOT NULL en la misma sentencia: desde 12c Oracle NO reescribe
+--  la tabla entera para esto (guarda el default en el diccionario y lo aplica
+--  al leer), asi que es instantaneo aunque items tenga muchas filas.
+ALTER TABLE items ADD (stock_minimo NUMBER DEFAULT 5 NOT NULL);
+ALTER TABLE items ADD CONSTRAINT ck_items_stock_minimo CHECK (stock_minimo >= 0);
+
+
+--==============================================================================
+-- 3. DATOS INICIALES (SEEDS)
+--==============================================================================
+--  Correr una sola vez. Los UNIQUE de roles.nombre y permisos.nombre hacen que
+--  un segundo intento falle con ORA-00001, asi que no se duplica nada por error.
+--------------------------------------------------------------------------------
+
+-- 3.1 Usuario administrador -----------------------------------------------
+--     La contrasena es: admin123
+INSERT INTO usuarios (nombre, apellido, usuario_login, password_hash, rol)
+VALUES ('Admin', 'Principal', 'admin',
+        'F1vAyxRoZfTFwxLimPfpukryp2oC/6GhVknV98qO46/HVRsHanpLOfpxGqoON+F8',
+        'ADMIN');
+COMMIT;
+
+-- 3.2 Roles ---------------------------------------------------------------
+INSERT INTO roles (nombre, descripcion) VALUES ('EMPLEADO',  'Solo puede ver items');
+INSERT INTO roles (nombre, descripcion) VALUES ('JEFE_AREA', 'Administra su area');
+INSERT INTO roles (nombre, descripcion) VALUES ('JEFE',      'Control total del sistema');
+
+-- 3.3 Catalogo de permisos ------------------------------------------------
+INSERT INTO permisos (nombre, descripcion) VALUES ('ITEMS_VER',               'Ver listado de items');
+INSERT INTO permisos (nombre, descripcion) VALUES ('ITEMS_CREAR',             'Crear items nuevos');
+INSERT INTO permisos (nombre, descripcion) VALUES ('ITEMS_EDITAR',            'Editar items existentes');
+INSERT INTO permisos (nombre, descripcion) VALUES ('ITEMS_ELIMINAR',          'Eliminar items');
+INSERT INTO permisos (nombre, descripcion) VALUES ('HISTORIAL_VER',           'Ver bitacora de auditoria');
+INSERT INTO permisos (nombre, descripcion) VALUES ('MOVIMIENTOS_REGISTRAR',   'Registrar entradas/salidas');
+INSERT INTO permisos (nombre, descripcion) VALUES ('UBICACIONES_VER',         'Ver edificios, areas y espacios');
+INSERT INTO permisos (nombre, descripcion) VALUES ('UBICACIONES_ADMINISTRAR', 'Crear, editar y eliminar edificios, areas y espacios');
+INSERT INTO permisos (nombre, descripcion) VALUES ('CATALOGOS_VER',           'Ver marcas, modelos, estados y tipos de movimiento');
+INSERT INTO permisos (nombre, descripcion) VALUES ('CATALOGOS_ADMINISTRAR',   'Crear, editar y eliminar catalogos');
+INSERT INTO permisos (nombre, descripcion) VALUES ('ACTIVOS_VER',             'Ver activos');
+INSERT INTO permisos (nombre, descripcion) VALUES ('ACTIVOS_ADMINISTRAR',     'Crear, editar y eliminar activos');
+COMMIT;
+
+-- 3.4 Permisos por defecto de cada rol ------------------------------------
+
+-- EMPLEADO: solo ver
+INSERT INTO rol_permisos (id_rol, id_permiso)
+    SELECT r.id_rol, p.id_permiso
+    FROM roles r, permisos p
+    WHERE r.nombre = 'EMPLEADO'
+      AND p.nombre IN ('ITEMS_VER');
+
+-- JEFE_AREA: ver/crear/editar items, registrar movimientos, ver historial, ver
+--            ubicaciones y catalogos, y ADMINISTRAR activos.
+--            No puede eliminar items, ni administrar ubicaciones ni catalogos.
+--
+--            Notar la asimetria a proposito: en ubicaciones y catalogos solo
+--            tiene el _VER, pero en activos tiene tambien el _ADMINISTRAR. Un
+--            jefe de area da de alta y mueve los activos de su area todos los
+--            dias; en cambio la estructura de edificios y los catalogos los
+--            define el JEFE y no deberian cambiar seguido.
+INSERT INTO rol_permisos (id_rol, id_permiso)
+    SELECT r.id_rol, p.id_permiso
+    FROM roles r, permisos p
+    WHERE r.nombre = 'JEFE_AREA'
+      AND p.nombre IN ('ITEMS_VER','ITEMS_CREAR','ITEMS_EDITAR',
+                       'MOVIMIENTOS_REGISTRAR','HISTORIAL_VER',
+                       'UBICACIONES_VER','CATALOGOS_VER',
+                       'ACTIVOS_VER','ACTIVOS_ADMINISTRAR');
+
+-- JEFE: todo (sin filtro de p.nombre = se lleva el catalogo completo).
+--       Por eso NO hay que agregarle permisos nuevos uno por uno aca: con que
+--       esten en la seccion 3.3 ya le caen solos. Si se le insertan aparte,
+--       revienta con ORA-00001 contra pk_rol_permisos.
+INSERT INTO rol_permisos (id_rol, id_permiso)
+    SELECT r.id_rol, p.id_permiso
+    FROM roles r, permisos p
+    WHERE r.nombre = 'JEFE';
+
+COMMIT;
+
+
+-- 3.5 Estados ---------------------------------------------------------------
+INSERT INTO estados (nombre, descripcion) VALUES ('Disponible',    'Listo para asignar/usar');
+INSERT INTO estados (nombre, descripcion) VALUES ('Prestado',      'Actualmente prestado a alguien');
+INSERT INTO estados (nombre, descripcion) VALUES ('En reparación', 'En proceso de mantenimiento/reparación');
+INSERT INTO estados (nombre, descripcion) VALUES ('Baja',          'Dado de baja, ya no está en uso');
+INSERT INTO estados (nombre, descripcion) VALUES ('Extraviado',    'No se encuentra, reportado como perdido');
+COMMIT;
+
+
+-- 3.6 Tipos de movimiento -----------------------------------------------------
+INSERT INTO tipos_movimiento (nombre, descripcion) VALUES ('Alta',          'Registro inicial del activo');
+INSERT INTO tipos_movimiento (nombre, descripcion) VALUES ('Reubicación',   'Cambio de ubicación física');
+INSERT INTO tipos_movimiento (nombre, descripcion) VALUES ('Préstamo',      'Asignado temporalmente a alguien');
+INSERT INTO tipos_movimiento (nombre, descripcion) VALUES ('Devolución',    'Regresa de un préstamo');
+INSERT INTO tipos_movimiento (nombre, descripcion) VALUES ('Mantenimiento', 'Enviado a reparación/servicio');
+INSERT INTO tipos_movimiento (nombre, descripcion) VALUES ('Baja',          'Se da de baja del inventario');
+COMMIT;
+
+--  PENDIENTE / CHOQUE CON pkg_movimientos
+--  ---------------------------------------------------------------------------
+--  Este catalogo NO se habla con lo que ya existe. Hoy:
+--
+--    - movimientos_inventario.tipo_movimiento guarda texto libre.
+--    - pkg_movimientos.sp_registrar (seccion 4.14) decide si suma o resta stock
+--      comparando ese texto contra 'ENTRADA' / 'SALIDA'.
+--
+--  Ninguno de los seis nombres de arriba es 'ENTRADA' ni 'SALIDA'. Si se
+--  engancha movimientos_inventario a esta tabla sin tocar sp_registrar, el IF
+--  nunca da verdadero y TODO movimiento cae en el ELSE, que RESTA stock. Un
+--  'Alta' terminaria descontando existencias, y sin error visible.
+--
+--  Antes de conectarlos hay que decidir como se traduce cada tipo a suma o
+--  resta. Lo mas prolijo es que el catalogo lo diga por si mismo, por ejemplo
+--  con una columna de signo:
+--
+--      ALTER TABLE tipos_movimiento ADD (efecto_stock NUMBER(1) DEFAULT 0 NOT NULL);
+--      -- +1 = suma, -1 = resta, 0 = no toca el stock (Reubicacion, Prestamo...)
+--
+--  ...y que sp_registrar lea ese valor en vez de comparar contra literales.
+--  No se hace aca porque cambia el comportamiento de un package que ya esta
+--  en uso.
+
+
+-- 3.7 Migracion: permisos nuevos sobre una BD YA sembrada -------------------
+--     Si la base ya tiene corrida una version vieja de la 3.3/3.4, esto agrega
+--     los permisos que le falten sin tocar lo demas. En una BD nueva NO se
+--     corre nada de aca: ya quedo todo arriba.
+--
+--     Todos los INSERT usan NOT EXISTS, asi que se pueden ejecutar de nuevo sin
+--     miedo a duplicar ni a chocar contra uq_permisos_nombre / pk_rol_permisos.
+--
+--     Notar que a JEFE si hay que darle los permisos uno por uno ACA, al reves
+--     que en la 3.4: alla el cross join se los daba solos porque los permisos
+--     ya existian al momento de correrlo; aca ya paso ese tren.
+--
+--     --- Tanda A: permisos de UBICACIONES -----------------------------------
+--
+-- INSERT INTO permisos (nombre, descripcion)
+--     SELECT 'UBICACIONES_VER', 'Ver edificios, areas y espacios' FROM dual
+--     WHERE NOT EXISTS (SELECT 1 FROM permisos WHERE nombre = 'UBICACIONES_VER');
+--
+-- INSERT INTO permisos (nombre, descripcion)
+--     SELECT 'UBICACIONES_ADMINISTRAR', 'Crear, editar y eliminar edificios, areas y espacios' FROM dual
+--     WHERE NOT EXISTS (SELECT 1 FROM permisos WHERE nombre = 'UBICACIONES_ADMINISTRAR');
+-- COMMIT;
+--
+-- -- JEFE: los dos permisos nuevos
+-- INSERT INTO rol_permisos (id_rol, id_permiso)
+--     SELECT r.id_rol, p.id_permiso
+--     FROM roles r, permisos p
+--     WHERE r.nombre = 'JEFE'
+--       AND p.nombre IN ('UBICACIONES_VER','UBICACIONES_ADMINISTRAR')
+--       AND NOT EXISTS (SELECT 1 FROM rol_permisos rp
+--                       WHERE rp.id_rol = r.id_rol AND rp.id_permiso = p.id_permiso);
+--
+-- -- JEFE_AREA: solo ver
+-- INSERT INTO rol_permisos (id_rol, id_permiso)
+--     SELECT r.id_rol, p.id_permiso
+--     FROM roles r, permisos p
+--     WHERE r.nombre = 'JEFE_AREA'
+--       AND p.nombre = 'UBICACIONES_VER'
+--       AND NOT EXISTS (SELECT 1 FROM rol_permisos rp
+--                       WHERE rp.id_rol = r.id_rol AND rp.id_permiso = p.id_permiso);
+-- COMMIT;
+
+--     --- Tanda B: permisos de CATALOGOS (marcas, modelos, estados, tipos) ----
+--
+-- INSERT INTO permisos (nombre, descripcion)
+--     SELECT 'CATALOGOS_VER', 'Ver marcas, modelos, estados y tipos de movimiento' FROM dual
+--     WHERE NOT EXISTS (SELECT 1 FROM permisos WHERE nombre = 'CATALOGOS_VER');
+--
+-- INSERT INTO permisos (nombre, descripcion)
+--     SELECT 'CATALOGOS_ADMINISTRAR', 'Crear, editar y eliminar catalogos' FROM dual
+--     WHERE NOT EXISTS (SELECT 1 FROM permisos WHERE nombre = 'CATALOGOS_ADMINISTRAR');
+-- COMMIT;
+--
+-- -- JEFE: los dos permisos nuevos
+-- INSERT INTO rol_permisos (id_rol, id_permiso)
+--     SELECT r.id_rol, p.id_permiso
+--     FROM roles r, permisos p
+--     WHERE r.nombre = 'JEFE'
+--       AND p.nombre IN ('CATALOGOS_VER','CATALOGOS_ADMINISTRAR')
+--       AND NOT EXISTS (SELECT 1 FROM rol_permisos rp
+--                       WHERE rp.id_rol = r.id_rol AND rp.id_permiso = p.id_permiso);
+--
+-- -- JEFE_AREA: solo ver
+-- INSERT INTO rol_permisos (id_rol, id_permiso)
+--     SELECT r.id_rol, p.id_permiso
+--     FROM roles r, permisos p
+--     WHERE r.nombre = 'JEFE_AREA'
+--       AND p.nombre = 'CATALOGOS_VER'
+--       AND NOT EXISTS (SELECT 1 FROM rol_permisos rp
+--                       WHERE rp.id_rol = r.id_rol AND rp.id_permiso = p.id_permiso);
+-- COMMIT;
+
+--     --- Tanda C: permisos de ACTIVOS --------------------------------------
+--     Aca JEFE_AREA se lleva los DOS, no solo el _VER. Ver la nota de la 3.4.
+--
+-- INSERT INTO permisos (nombre, descripcion)
+--     SELECT 'ACTIVOS_VER', 'Ver activos' FROM dual
+--     WHERE NOT EXISTS (SELECT 1 FROM permisos WHERE nombre = 'ACTIVOS_VER');
+--
+-- INSERT INTO permisos (nombre, descripcion)
+--     SELECT 'ACTIVOS_ADMINISTRAR', 'Crear, editar y eliminar activos' FROM dual
+--     WHERE NOT EXISTS (SELECT 1 FROM permisos WHERE nombre = 'ACTIVOS_ADMINISTRAR');
+-- COMMIT;
+--
+-- -- JEFE y JEFE_AREA: los dos permisos nuevos para ambos
+-- INSERT INTO rol_permisos (id_rol, id_permiso)
+--     SELECT r.id_rol, p.id_permiso
+--     FROM roles r, permisos p
+--     WHERE r.nombre IN ('JEFE','JEFE_AREA')
+--       AND p.nombre IN ('ACTIVOS_VER','ACTIVOS_ADMINISTRAR')
+--       AND NOT EXISTS (SELECT 1 FROM rol_permisos rp
+--                       WHERE rp.id_rol = r.id_rol AND rp.id_permiso = p.id_permiso);
+-- COMMIT;
+
+
+--==============================================================================
+-- 4. PAQUETES PL/SQL
+--==============================================================================
+--  Orden: primero los de seguridad, despues los de ubicaciones, luego los de
+--  catalogo y al final los de inventario. Cada uno va spec + body seguidos.
+--
+--  Convencion en todos los paquetes:
+--    - sp_eliminar hace borrado LOGICO (activo = 'N'), nunca DELETE.
+--    - ninguno hace COMMIT: la transaccion la cierra el C# que los llama.
+--    - los alias de las columnas van en PascalCase para que mapeen directo
+--      contra las propiedades de los modelos.
+--------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------
+-- 4.1 PKG_USUARIOS
+------------------------------------------------------------------------------
+--  sp_obtener_por_login YA NO devuelve la columna rol: la autorizacion no pasa
+--  por el ticket de Forms Auth sino por AuthorizePermisoAttribute, que consulta
+--  los permisos en vivo con pkg_permisos.sp_obtener_por_usuario.
+--
+--  El SELECT tiene que quedar sin 'rol' ANTES de correr el DROP COLUMN de la
+--  seccion 5, si no el package queda INVALID hasta que alguien lo recompile.
+--  Las columnas de aca mapean 1:1 contra Models/Usuario.cs.
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_usuarios AS
+
+    PROCEDURE sp_obtener_por_login (
+        p_login  IN  usuarios.usuario_login%TYPE,
+        p_cursor OUT SYS_REFCURSOR
+    );
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+END pkg_usuarios;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_usuarios AS
+
+    PROCEDURE sp_obtener_por_login (
+        p_login  IN  usuarios.usuario_login%TYPE,
         p_cursor OUT SYS_REFCURSOR
     ) IS
     BEGIN
         OPEN p_cursor FOR
-            SELECT i.id_item        AS Id,
-                   i.codigo         AS Codigo,
-                   i.nombre         AS Nombre,
-                   i.descripcion    AS Descripcion,
-                   i.id_categoria   AS IdCategoria,
-                   c.nombre         AS NombreCategoria,
-                   i.cantidad       AS Cantidad,
-                   i.unidad_medida  AS UnidadMedida,
-                   i.ubicacion      AS Ubicacion,
-                   i.imagen_s3_key  AS ImagenS3Key
+            SELECT id_usuario    AS Id,
+                   nombre        AS Nombre,
+                   apellido      AS Apellido,
+                   usuario_login AS UsuarioLogin,
+                   password_hash AS PasswordHash
+            FROM usuarios
+            WHERE usuario_login = p_login
+              AND activo = 'S';
+    END sp_obtener_por_login;
+
+    -- Alimenta el dropdown de Responsable del formulario de activos.
+    -- NO devuelve password_hash: es una lista para elegir gente, no para
+    -- autenticar. Ese dato solo sale por sp_obtener_por_login.
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT id_usuario AS Id,
+                   nombre     AS Nombre,
+                   apellido   AS Apellido
+            FROM usuarios
+            WHERE activo = 'S'
+            ORDER BY nombre, apellido;
+    END sp_listar;
+
+END pkg_usuarios;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.2 PKG_ROLES
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_roles AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_registrar (
+        p_nombre      IN  roles.nombre%TYPE,
+        p_descripcion IN  roles.descripcion%TYPE,
+        p_id_rol_out  OUT roles.id_rol%TYPE
+    );
+
+    PROCEDURE sp_modificar (
+        p_id_rol      IN roles.id_rol%TYPE,
+        p_nombre      IN roles.nombre%TYPE,
+        p_descripcion IN roles.descripcion%TYPE
+    );
+
+    PROCEDURE sp_eliminar (p_id_rol IN roles.id_rol%TYPE);
+
+END pkg_roles;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_roles AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT r.id_rol      AS Id,
+                   r.nombre      AS Nombre,
+                   r.descripcion AS Descripcion
+            FROM roles r
+            WHERE r.activo = 'S'
+            ORDER BY r.nombre;
+    END sp_listar;
+
+    PROCEDURE sp_registrar (
+        p_nombre      IN  roles.nombre%TYPE,
+        p_descripcion IN  roles.descripcion%TYPE,
+        p_id_rol_out  OUT roles.id_rol%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO roles (nombre, descripcion)
+        VALUES (p_nombre, p_descripcion)
+        RETURNING id_rol INTO p_id_rol_out;
+    END sp_registrar;
+
+    PROCEDURE sp_modificar (
+        p_id_rol      IN roles.id_rol%TYPE,
+        p_nombre      IN roles.nombre%TYPE,
+        p_descripcion IN roles.descripcion%TYPE
+    ) IS
+    BEGIN
+        UPDATE roles
+           SET nombre      = p_nombre,
+               descripcion = p_descripcion
+         WHERE id_rol = p_id_rol;
+    END sp_modificar;
+
+    -- Borrado logico: el rol no se elimina, se marca como inactivo.
+    PROCEDURE sp_eliminar (p_id_rol IN roles.id_rol%TYPE) IS
+    BEGIN
+        UPDATE roles
+           SET activo = 'N'
+         WHERE id_rol = p_id_rol;
+    END sp_eliminar;
+
+END pkg_roles;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.3 PKG_PERMISOS
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_permisos AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_obtener_por_usuario (
+        p_id_usuario IN  usuarios.id_usuario%TYPE,
+        p_cursor     OUT SYS_REFCURSOR
+    );
+
+END pkg_permisos;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_permisos AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT id_permiso  AS Id,
+                   nombre      AS Nombre,
+                   descripcion AS Descripcion
+            FROM permisos
+            ORDER BY nombre;
+    END sp_listar;
+
+    -- Devuelve los permisos EFECTIVOS del usuario:
+    --   (permisos del rol + concedidos 'S') - denegados 'N'
+    PROCEDURE sp_obtener_por_usuario (
+        p_id_usuario IN  usuarios.id_usuario%TYPE,
+        p_cursor     OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT DISTINCT p.nombre AS Nombre
+            FROM permisos p
+            WHERE p.id_permiso IN (
+                    -- permisos que trae el rol del usuario, por defecto
+                    SELECT rp.id_permiso
+                    FROM rol_permisos rp
+                    JOIN usuarios u ON u.id_rol = rp.id_rol
+                    WHERE u.id_usuario = p_id_usuario
+                    UNION
+                    -- permisos concedidos individualmente (excepcion positiva)
+                    SELECT up.id_permiso
+                    FROM usuario_permisos up
+                    WHERE up.id_usuario = p_id_usuario
+                      AND up.concedido = 'S'
+                  )
+              AND p.id_permiso NOT IN (
+                    -- permisos denegados individualmente (gana sobre el rol)
+                    SELECT up.id_permiso
+                    FROM usuario_permisos up
+                    WHERE up.id_usuario = p_id_usuario
+                      AND up.concedido = 'N'
+                  );
+    END sp_obtener_por_usuario;
+
+END pkg_permisos;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.4 PKG_EDIFICIOS
+------------------------------------------------------------------------------
+--  Primer nivel de la jerarquia de ubicaciones. No depende de nadie, por eso
+--  su sp_listar no necesita ningun JOIN.
+--
+--  p_creado_por / p_actualizado_por vienen del C# (ObtenerIdUsuarioActual()),
+--  igual que se hace al escribir en historial_items.
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_edificios AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_insertar (
+        p_nombre           IN  edificios.nombre%TYPE,
+        p_descripcion      IN  edificios.descripcion%TYPE,
+        p_creado_por       IN  edificios.creado_por%TYPE,
+        p_id_edificio_out  OUT edificios.id_edificio%TYPE
+    );
+
+    PROCEDURE sp_actualizar (
+        p_id_edificio     IN edificios.id_edificio%TYPE,
+        p_nombre          IN edificios.nombre%TYPE,
+        p_descripcion     IN edificios.descripcion%TYPE,
+        p_actualizado_por IN edificios.actualizado_por%TYPE
+    );
+
+    PROCEDURE sp_eliminar (p_id_edificio IN edificios.id_edificio%TYPE);
+
+END pkg_edificios;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_edificios AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT e.id_edificio         AS Id,
+                   e.nombre              AS Nombre,
+                   e.descripcion         AS Descripcion,
+                   e.creado_por          AS CreadoPor,
+                   e.actualizado_por     AS ActualizadoPor,
+                   e.fecha_creacion      AS FechaCreacion,
+                   e.fecha_actualizacion AS FechaActualizacion
+            FROM edificios e
+            WHERE e.activo = 'S'
+            ORDER BY e.nombre;
+    END sp_listar;
+
+    -- fecha_creacion no se pasa: la tabla ya tiene DEFAULT SYSDATE.
+    PROCEDURE sp_insertar (
+        p_nombre           IN  edificios.nombre%TYPE,
+        p_descripcion      IN  edificios.descripcion%TYPE,
+        p_creado_por       IN  edificios.creado_por%TYPE,
+        p_id_edificio_out  OUT edificios.id_edificio%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO edificios (nombre, descripcion, creado_por)
+        VALUES (p_nombre, p_descripcion, p_creado_por)
+        RETURNING id_edificio INTO p_id_edificio_out;
+    END sp_insertar;
+
+    PROCEDURE sp_actualizar (
+        p_id_edificio     IN edificios.id_edificio%TYPE,
+        p_nombre          IN edificios.nombre%TYPE,
+        p_descripcion     IN edificios.descripcion%TYPE,
+        p_actualizado_por IN edificios.actualizado_por%TYPE
+    ) IS
+    BEGIN
+        UPDATE edificios
+           SET nombre              = p_nombre,
+               descripcion         = p_descripcion,
+               actualizado_por     = p_actualizado_por,
+               fecha_actualizacion = SYSDATE
+         WHERE id_edificio = p_id_edificio;
+    END sp_actualizar;
+
+    -- Borrado logico: el edificio no se elimina, se marca como inactivo.
+    PROCEDURE sp_eliminar (p_id_edificio IN edificios.id_edificio%TYPE) IS
+    BEGIN
+        UPDATE edificios
+           SET activo              = 'N',
+               fecha_actualizacion = SYSDATE
+         WHERE id_edificio = p_id_edificio;
+    END sp_eliminar;
+
+END pkg_edificios;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.5 PKG_AREAS
+------------------------------------------------------------------------------
+--  Segundo nivel: un area siempre cuelga de un edificio.
+--
+--  sp_listar trae NombreEdificio con un JOIN, igual que pkg_items trae
+--  NombreCategoria. Aca el JOIN es INNER y no LEFT: areas.id_edificio es
+--  NOT NULL con FK, asi que la fila padre siempre existe y un INNER no puede
+--  perder registros. (En pkg_items es LEFT porque items.id_categoria si
+--  admite nulos.)
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_areas AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_insertar (
+        p_id_edificio  IN  areas.id_edificio%TYPE,
+        p_nombre       IN  areas.nombre%TYPE,
+        p_descripcion  IN  areas.descripcion%TYPE,
+        p_creado_por   IN  areas.creado_por%TYPE,
+        p_id_area_out  OUT areas.id_area%TYPE
+    );
+
+    PROCEDURE sp_actualizar (
+        p_id_area         IN areas.id_area%TYPE,
+        p_id_edificio     IN areas.id_edificio%TYPE,
+        p_nombre          IN areas.nombre%TYPE,
+        p_descripcion     IN areas.descripcion%TYPE,
+        p_actualizado_por IN areas.actualizado_por%TYPE
+    );
+
+    PROCEDURE sp_eliminar (p_id_area IN areas.id_area%TYPE);
+
+END pkg_areas;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_areas AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT a.id_area             AS Id,
+                   a.id_edificio         AS IdEdificio,
+                   e.nombre              AS NombreEdificio,
+                   a.nombre              AS Nombre,
+                   a.descripcion         AS Descripcion,
+                   a.creado_por          AS CreadoPor,
+                   a.actualizado_por     AS ActualizadoPor,
+                   a.fecha_creacion      AS FechaCreacion,
+                   a.fecha_actualizacion AS FechaActualizacion
+            FROM areas a
+            JOIN edificios e ON e.id_edificio = a.id_edificio
+            WHERE a.activo = 'S'
+            ORDER BY e.nombre, a.nombre;
+    END sp_listar;
+
+    PROCEDURE sp_insertar (
+        p_id_edificio  IN  areas.id_edificio%TYPE,
+        p_nombre       IN  areas.nombre%TYPE,
+        p_descripcion  IN  areas.descripcion%TYPE,
+        p_creado_por   IN  areas.creado_por%TYPE,
+        p_id_area_out  OUT areas.id_area%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO areas (id_edificio, nombre, descripcion, creado_por)
+        VALUES (p_id_edificio, p_nombre, p_descripcion, p_creado_por)
+        RETURNING id_area INTO p_id_area_out;
+    END sp_insertar;
+
+    -- Permite mover el area a otro edificio (por eso p_id_edificio va en el SET).
+    PROCEDURE sp_actualizar (
+        p_id_area         IN areas.id_area%TYPE,
+        p_id_edificio     IN areas.id_edificio%TYPE,
+        p_nombre          IN areas.nombre%TYPE,
+        p_descripcion     IN areas.descripcion%TYPE,
+        p_actualizado_por IN areas.actualizado_por%TYPE
+    ) IS
+    BEGIN
+        UPDATE areas
+           SET id_edificio         = p_id_edificio,
+               nombre              = p_nombre,
+               descripcion         = p_descripcion,
+               actualizado_por     = p_actualizado_por,
+               fecha_actualizacion = SYSDATE
+         WHERE id_area = p_id_area;
+    END sp_actualizar;
+
+    -- Borrado logico: el area no se elimina, se marca como inactiva.
+    PROCEDURE sp_eliminar (p_id_area IN areas.id_area%TYPE) IS
+    BEGIN
+        UPDATE areas
+           SET activo              = 'N',
+               fecha_actualizacion = SYSDATE
+         WHERE id_area = p_id_area;
+    END sp_eliminar;
+
+END pkg_areas;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.6 PKG_ESPACIOS
+------------------------------------------------------------------------------
+--  Tercer nivel: espacio -> area -> edificio.
+--
+--  Sobre el doble JOIN en sp_listar: SI conviene. Un espacio solo se identifica
+--  bien viendo la jerarquia completa ("Sala 3" no dice nada; "Central > Piso 2 >
+--  Sala 3" si). Resolverlo aca evita que el C# tenga que pegar dos consultas
+--  mas por cada fila para pintar la grilla. Son dos INNER JOIN sobre PKs, o sea
+--  practicamente gratis, y ambas FKs son NOT NULL asi que no se pierden filas.
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_espacios AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_insertar (
+        p_id_area        IN  espacios.id_area%TYPE,
+        p_nombre         IN  espacios.nombre%TYPE,
+        p_descripcion    IN  espacios.descripcion%TYPE,
+        p_creado_por     IN  espacios.creado_por%TYPE,
+        p_id_espacio_out OUT espacios.id_espacio%TYPE
+    );
+
+    PROCEDURE sp_actualizar (
+        p_id_espacio      IN espacios.id_espacio%TYPE,
+        p_id_area         IN espacios.id_area%TYPE,
+        p_nombre          IN espacios.nombre%TYPE,
+        p_descripcion     IN espacios.descripcion%TYPE,
+        p_actualizado_por IN espacios.actualizado_por%TYPE
+    );
+
+    PROCEDURE sp_eliminar (p_id_espacio IN espacios.id_espacio%TYPE);
+
+END pkg_espacios;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_espacios AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT s.id_espacio          AS Id,
+                   s.id_area             AS IdArea,
+                   a.nombre              AS NombreArea,
+                   a.id_edificio         AS IdEdificio,
+                   e.nombre              AS NombreEdificio,
+                   s.nombre              AS Nombre,
+                   s.descripcion         AS Descripcion,
+                   s.creado_por          AS CreadoPor,
+                   s.actualizado_por     AS ActualizadoPor,
+                   s.fecha_creacion      AS FechaCreacion,
+                   s.fecha_actualizacion AS FechaActualizacion
+            FROM espacios s
+            JOIN areas     a ON a.id_area     = s.id_area
+            JOIN edificios e ON e.id_edificio = a.id_edificio
+            WHERE s.activo = 'S'
+            ORDER BY e.nombre, a.nombre, s.nombre;
+    END sp_listar;
+
+    PROCEDURE sp_insertar (
+        p_id_area        IN  espacios.id_area%TYPE,
+        p_nombre         IN  espacios.nombre%TYPE,
+        p_descripcion    IN  espacios.descripcion%TYPE,
+        p_creado_por     IN  espacios.creado_por%TYPE,
+        p_id_espacio_out OUT espacios.id_espacio%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO espacios (id_area, nombre, descripcion, creado_por)
+        VALUES (p_id_area, p_nombre, p_descripcion, p_creado_por)
+        RETURNING id_espacio INTO p_id_espacio_out;
+    END sp_insertar;
+
+    -- Permite mover el espacio a otra area (por eso p_id_area va en el SET).
+    PROCEDURE sp_actualizar (
+        p_id_espacio      IN espacios.id_espacio%TYPE,
+        p_id_area         IN espacios.id_area%TYPE,
+        p_nombre          IN espacios.nombre%TYPE,
+        p_descripcion     IN espacios.descripcion%TYPE,
+        p_actualizado_por IN espacios.actualizado_por%TYPE
+    ) IS
+    BEGIN
+        UPDATE espacios
+           SET id_area             = p_id_area,
+               nombre              = p_nombre,
+               descripcion         = p_descripcion,
+               actualizado_por     = p_actualizado_por,
+               fecha_actualizacion = SYSDATE
+         WHERE id_espacio = p_id_espacio;
+    END sp_actualizar;
+
+    -- Borrado logico: el espacio no se elimina, se marca como inactivo.
+    PROCEDURE sp_eliminar (p_id_espacio IN espacios.id_espacio%TYPE) IS
+    BEGIN
+        UPDATE espacios
+           SET activo              = 'N',
+               fecha_actualizacion = SYSDATE
+         WHERE id_espacio = p_id_espacio;
+    END sp_eliminar;
+
+END pkg_espacios;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.7 PKG_CATEGORIAS
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_categorias AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+END pkg_categorias;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_categorias AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT id_categoria AS Id,
+                   nombre       AS Nombre,
+                   descripcion  AS Descripcion
+            FROM categorias
+            ORDER BY nombre;
+    END sp_listar;
+
+END pkg_categorias;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.8 PKG_MARCAS
+------------------------------------------------------------------------------
+--  Mismo patron que pkg_edificios: catalogo con auditoria completa, sin padre,
+--  asi que sp_listar no necesita JOIN.
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_marcas AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_insertar (
+        p_nombre       IN  marcas.nombre%TYPE,
+        p_descripcion  IN  marcas.descripcion%TYPE,
+        p_creado_por   IN  marcas.creado_por%TYPE,
+        p_id_marca_out OUT marcas.id_marca%TYPE
+    );
+
+    PROCEDURE sp_actualizar (
+        p_id_marca        IN marcas.id_marca%TYPE,
+        p_nombre          IN marcas.nombre%TYPE,
+        p_descripcion     IN marcas.descripcion%TYPE,
+        p_actualizado_por IN marcas.actualizado_por%TYPE
+    );
+
+    PROCEDURE sp_eliminar (p_id_marca IN marcas.id_marca%TYPE);
+
+END pkg_marcas;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_marcas AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT m.id_marca            AS Id,
+                   m.nombre              AS Nombre,
+                   m.descripcion         AS Descripcion,
+                   m.creado_por          AS CreadoPor,
+                   m.actualizado_por     AS ActualizadoPor,
+                   m.fecha_creacion      AS FechaCreacion,
+                   m.fecha_actualizacion AS FechaActualizacion
+            FROM marcas m
+            WHERE m.activo = 'S'
+            ORDER BY m.nombre;
+    END sp_listar;
+
+    PROCEDURE sp_insertar (
+        p_nombre       IN  marcas.nombre%TYPE,
+        p_descripcion  IN  marcas.descripcion%TYPE,
+        p_creado_por   IN  marcas.creado_por%TYPE,
+        p_id_marca_out OUT marcas.id_marca%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO marcas (nombre, descripcion, creado_por)
+        VALUES (p_nombre, p_descripcion, p_creado_por)
+        RETURNING id_marca INTO p_id_marca_out;
+    END sp_insertar;
+
+    PROCEDURE sp_actualizar (
+        p_id_marca        IN marcas.id_marca%TYPE,
+        p_nombre          IN marcas.nombre%TYPE,
+        p_descripcion     IN marcas.descripcion%TYPE,
+        p_actualizado_por IN marcas.actualizado_por%TYPE
+    ) IS
+    BEGIN
+        UPDATE marcas
+           SET nombre              = p_nombre,
+               descripcion         = p_descripcion,
+               actualizado_por     = p_actualizado_por,
+               fecha_actualizacion = SYSDATE
+         WHERE id_marca = p_id_marca;
+    END sp_actualizar;
+
+    -- Borrado logico: la marca no se elimina, se marca como inactiva.
+    PROCEDURE sp_eliminar (p_id_marca IN marcas.id_marca%TYPE) IS
+    BEGIN
+        UPDATE marcas
+           SET activo              = 'N',
+               fecha_actualizacion = SYSDATE
+         WHERE id_marca = p_id_marca;
+    END sp_eliminar;
+
+END pkg_marcas;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.9 PKG_MODELOS
+------------------------------------------------------------------------------
+--  Mismo patron que pkg_areas: cuelga de un padre (marca), asi que sp_listar
+--  trae NombreMarca con un JOIN. El JOIN es INNER y no LEFT porque
+--  modelos.id_marca es NOT NULL con FK: la marca siempre existe.
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_modelos AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_insertar (
+        p_id_marca      IN  modelos.id_marca%TYPE,
+        p_nombre        IN  modelos.nombre%TYPE,
+        p_descripcion   IN  modelos.descripcion%TYPE,
+        p_creado_por    IN  modelos.creado_por%TYPE,
+        p_id_modelo_out OUT modelos.id_modelo%TYPE
+    );
+
+    PROCEDURE sp_actualizar (
+        p_id_modelo       IN modelos.id_modelo%TYPE,
+        p_id_marca        IN modelos.id_marca%TYPE,
+        p_nombre          IN modelos.nombre%TYPE,
+        p_descripcion     IN modelos.descripcion%TYPE,
+        p_actualizado_por IN modelos.actualizado_por%TYPE
+    );
+
+    PROCEDURE sp_eliminar (p_id_modelo IN modelos.id_modelo%TYPE);
+
+END pkg_modelos;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_modelos AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT o.id_modelo           AS Id,
+                   o.id_marca            AS IdMarca,
+                   m.nombre              AS NombreMarca,
+                   o.nombre              AS Nombre,
+                   o.descripcion         AS Descripcion,
+                   o.creado_por          AS CreadoPor,
+                   o.actualizado_por     AS ActualizadoPor,
+                   o.fecha_creacion      AS FechaCreacion,
+                   o.fecha_actualizacion AS FechaActualizacion
+            FROM modelos o
+            JOIN marcas m ON m.id_marca = o.id_marca
+            WHERE o.activo = 'S'
+            ORDER BY m.nombre, o.nombre;
+    END sp_listar;
+
+    PROCEDURE sp_insertar (
+        p_id_marca      IN  modelos.id_marca%TYPE,
+        p_nombre        IN  modelos.nombre%TYPE,
+        p_descripcion   IN  modelos.descripcion%TYPE,
+        p_creado_por    IN  modelos.creado_por%TYPE,
+        p_id_modelo_out OUT modelos.id_modelo%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO modelos (id_marca, nombre, descripcion, creado_por)
+        VALUES (p_id_marca, p_nombre, p_descripcion, p_creado_por)
+        RETURNING id_modelo INTO p_id_modelo_out;
+    END sp_insertar;
+
+    -- Permite mover el modelo a otra marca (por eso p_id_marca va en el SET).
+    PROCEDURE sp_actualizar (
+        p_id_modelo       IN modelos.id_modelo%TYPE,
+        p_id_marca        IN modelos.id_marca%TYPE,
+        p_nombre          IN modelos.nombre%TYPE,
+        p_descripcion     IN modelos.descripcion%TYPE,
+        p_actualizado_por IN modelos.actualizado_por%TYPE
+    ) IS
+    BEGIN
+        UPDATE modelos
+           SET id_marca            = p_id_marca,
+               nombre              = p_nombre,
+               descripcion         = p_descripcion,
+               actualizado_por     = p_actualizado_por,
+               fecha_actualizacion = SYSDATE
+         WHERE id_modelo = p_id_modelo;
+    END sp_actualizar;
+
+    -- Borrado logico: el modelo no se elimina, se marca como inactivo.
+    PROCEDURE sp_eliminar (p_id_modelo IN modelos.id_modelo%TYPE) IS
+    BEGIN
+        UPDATE modelos
+           SET activo              = 'N',
+               fecha_actualizacion = SYSDATE
+         WHERE id_modelo = p_id_modelo;
+    END sp_eliminar;
+
+END pkg_modelos;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.10 PKG_ESTADOS
+------------------------------------------------------------------------------
+--  Catalogo chico: la tabla no tiene columnas de auditoria, asi que las firmas
+--  son mas cortas (sin p_creado_por / p_actualizado_por) y el sp_eliminar solo
+--  toca 'activo'. Se mantiene el nombre sp_actualizar para ir parejo con el
+--  resto de los paquetes.
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_estados AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_insertar (
+        p_nombre        IN  estados.nombre%TYPE,
+        p_descripcion   IN  estados.descripcion%TYPE,
+        p_id_estado_out OUT estados.id_estado%TYPE
+    );
+
+    PROCEDURE sp_actualizar (
+        p_id_estado   IN estados.id_estado%TYPE,
+        p_nombre      IN estados.nombre%TYPE,
+        p_descripcion IN estados.descripcion%TYPE
+    );
+
+    PROCEDURE sp_eliminar (p_id_estado IN estados.id_estado%TYPE);
+
+END pkg_estados;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_estados AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT e.id_estado   AS Id,
+                   e.nombre      AS Nombre,
+                   e.descripcion AS Descripcion
+            FROM estados e
+            WHERE e.activo = 'S'
+            ORDER BY e.nombre;
+    END sp_listar;
+
+    PROCEDURE sp_insertar (
+        p_nombre        IN  estados.nombre%TYPE,
+        p_descripcion   IN  estados.descripcion%TYPE,
+        p_id_estado_out OUT estados.id_estado%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO estados (nombre, descripcion)
+        VALUES (p_nombre, p_descripcion)
+        RETURNING id_estado INTO p_id_estado_out;
+    END sp_insertar;
+
+    PROCEDURE sp_actualizar (
+        p_id_estado   IN estados.id_estado%TYPE,
+        p_nombre      IN estados.nombre%TYPE,
+        p_descripcion IN estados.descripcion%TYPE
+    ) IS
+    BEGIN
+        UPDATE estados
+           SET nombre      = p_nombre,
+               descripcion = p_descripcion
+         WHERE id_estado = p_id_estado;
+    END sp_actualizar;
+
+    -- Borrado logico: el estado no se elimina, se marca como inactivo.
+    PROCEDURE sp_eliminar (p_id_estado IN estados.id_estado%TYPE) IS
+    BEGIN
+        UPDATE estados
+           SET activo = 'N'
+         WHERE id_estado = p_id_estado;
+    END sp_eliminar;
+
+END pkg_estados;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.11 PKG_TIPOS_MOVIMIENTO
+------------------------------------------------------------------------------
+--  Mismo patron chico que pkg_estados.
+--
+--  OJO: este catalogo todavia NO esta conectado con movimientos_inventario.
+--  pkg_movimientos.sp_registrar (seccion 4.14) sigue comparando texto libre
+--  contra 'ENTRADA' / 'SALIDA'. Ver la nota de la seccion 3.6.
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_tipos_movimiento AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_insertar (
+        p_nombre                  IN  tipos_movimiento.nombre%TYPE,
+        p_descripcion             IN  tipos_movimiento.descripcion%TYPE,
+        p_id_tipo_movimiento_out  OUT tipos_movimiento.id_tipo_movimiento%TYPE
+    );
+
+    PROCEDURE sp_actualizar (
+        p_id_tipo_movimiento IN tipos_movimiento.id_tipo_movimiento%TYPE,
+        p_nombre             IN tipos_movimiento.nombre%TYPE,
+        p_descripcion        IN tipos_movimiento.descripcion%TYPE
+    );
+
+    PROCEDURE sp_eliminar (
+        p_id_tipo_movimiento IN tipos_movimiento.id_tipo_movimiento%TYPE
+    );
+
+END pkg_tipos_movimiento;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_tipos_movimiento AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT t.id_tipo_movimiento AS Id,
+                   t.nombre             AS Nombre,
+                   t.descripcion        AS Descripcion
+            FROM tipos_movimiento t
+            WHERE t.activo = 'S'
+            ORDER BY t.nombre;
+    END sp_listar;
+
+    PROCEDURE sp_insertar (
+        p_nombre                  IN  tipos_movimiento.nombre%TYPE,
+        p_descripcion             IN  tipos_movimiento.descripcion%TYPE,
+        p_id_tipo_movimiento_out  OUT tipos_movimiento.id_tipo_movimiento%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO tipos_movimiento (nombre, descripcion)
+        VALUES (p_nombre, p_descripcion)
+        RETURNING id_tipo_movimiento INTO p_id_tipo_movimiento_out;
+    END sp_insertar;
+
+    PROCEDURE sp_actualizar (
+        p_id_tipo_movimiento IN tipos_movimiento.id_tipo_movimiento%TYPE,
+        p_nombre             IN tipos_movimiento.nombre%TYPE,
+        p_descripcion        IN tipos_movimiento.descripcion%TYPE
+    ) IS
+    BEGIN
+        UPDATE tipos_movimiento
+           SET nombre      = p_nombre,
+               descripcion = p_descripcion
+         WHERE id_tipo_movimiento = p_id_tipo_movimiento;
+    END sp_actualizar;
+
+    -- Borrado logico: el tipo no se elimina, se marca como inactivo.
+    PROCEDURE sp_eliminar (
+        p_id_tipo_movimiento IN tipos_movimiento.id_tipo_movimiento%TYPE
+    ) IS
+    BEGIN
+        UPDATE tipos_movimiento
+           SET activo = 'N'
+         WHERE id_tipo_movimiento = p_id_tipo_movimiento;
+    END sp_eliminar;
+
+END pkg_tipos_movimiento;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.12 PKG_ITEMS
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_items AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_buscar_por_codigo (
+        p_codigo IN  items.codigo%TYPE,
+        p_cursor OUT SYS_REFCURSOR
+    );
+
+    PROCEDURE sp_obtener_por_id (
+        p_item_id IN  items.id_item%TYPE,
+        p_cursor  OUT SYS_REFCURSOR
+    );
+
+    PROCEDURE sp_insertar (
+        p_codigo        IN  items.codigo%TYPE,
+        p_nombre        IN  items.nombre%TYPE,
+        p_descripcion   IN  items.descripcion%TYPE,
+        p_id_categoria  IN  items.id_categoria%TYPE,
+        p_cantidad      IN  items.cantidad%TYPE,
+        p_stock_minimo  IN  items.stock_minimo%TYPE,
+        p_unidad_medida IN  items.unidad_medida%TYPE,
+        p_ubicacion     IN  items.ubicacion%TYPE,
+        p_imagen_s3_key IN  items.imagen_s3_key%TYPE,
+        p_id_item_out   OUT items.id_item%TYPE
+    );
+
+    PROCEDURE sp_actualizar (
+        p_id_item       IN items.id_item%TYPE,
+        p_nombre        IN items.nombre%TYPE,
+        p_descripcion   IN items.descripcion%TYPE,
+        p_id_categoria  IN items.id_categoria%TYPE,
+        p_cantidad      IN items.cantidad%TYPE,
+        p_stock_minimo  IN items.stock_minimo%TYPE,
+        p_unidad_medida IN items.unidad_medida%TYPE,
+        p_ubicacion     IN items.ubicacion%TYPE,
+        p_imagen_s3_key IN items.imagen_s3_key%TYPE
+    );
+
+    PROCEDURE sp_eliminar (p_id_item IN items.id_item%TYPE);
+
+END pkg_items;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_items AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT i.id_item       AS Id,
+                   i.codigo        AS Codigo,
+                   i.nombre        AS Nombre,
+                   i.descripcion   AS Descripcion,
+                   i.id_categoria  AS IdCategoria,
+                   c.nombre        AS NombreCategoria,
+                   i.cantidad      AS Cantidad,
+                   i.stock_minimo  AS StockMinimo,
+                   i.unidad_medida AS UnidadMedida,
+                   i.ubicacion     AS Ubicacion,
+                   i.imagen_s3_key AS ImagenS3Key
             FROM items i
             LEFT JOIN categorias c ON c.id_categoria = i.id_categoria
             WHERE i.activo = 'S'
@@ -86,21 +1507,22 @@ CREATE OR REPLACE PACKAGE BODY pkg_items AS
     END sp_listar;
 
     PROCEDURE sp_buscar_por_codigo (
-        p_codigo IN items.codigo%TYPE,
+        p_codigo IN  items.codigo%TYPE,
         p_cursor OUT SYS_REFCURSOR
     ) IS
     BEGIN
         OPEN p_cursor FOR
-            SELECT i.id_item        AS Id,
-                   i.codigo         AS Codigo,
-                   i.nombre         AS Nombre,
-                   i.descripcion    AS Descripcion,
-                   i.id_categoria   AS IdCategoria,
-                   c.nombre         AS NombreCategoria,
-                   i.cantidad       AS Cantidad,
-                   i.unidad_medida  AS UnidadMedida,
-                   i.ubicacion      AS Ubicacion,
-                   i.imagen_s3_key  AS ImagenS3Key
+            SELECT i.id_item       AS Id,
+                   i.codigo        AS Codigo,
+                   i.nombre        AS Nombre,
+                   i.descripcion   AS Descripcion,
+                   i.id_categoria  AS IdCategoria,
+                   c.nombre        AS NombreCategoria,
+                   i.cantidad      AS Cantidad,
+                   i.stock_minimo  AS StockMinimo,
+                   i.unidad_medida AS UnidadMedida,
+                   i.ubicacion     AS Ubicacion,
+                   i.imagen_s3_key AS ImagenS3Key
             FROM items i
             LEFT JOIN categorias c ON c.id_categoria = i.id_categoria
             WHERE i.codigo = p_codigo
@@ -108,21 +1530,22 @@ CREATE OR REPLACE PACKAGE BODY pkg_items AS
     END sp_buscar_por_codigo;
 
     PROCEDURE sp_obtener_por_id (
-        p_item_id IN items.id_item%TYPE,
+        p_item_id IN  items.id_item%TYPE,
         p_cursor  OUT SYS_REFCURSOR
     ) IS
     BEGIN
         OPEN p_cursor FOR
-            SELECT i.id_item        AS Id,
-                   i.codigo         AS Codigo,
-                   i.nombre         AS Nombre,
-                   i.descripcion    AS Descripcion,
-                   i.id_categoria   AS IdCategoria,
-                   c.nombre         AS NombreCategoria,
-                   i.cantidad       AS Cantidad,
-                   i.unidad_medida  AS UnidadMedida,
-                   i.ubicacion      AS Ubicacion,
-                   i.imagen_s3_key  AS ImagenS3Key
+            SELECT i.id_item       AS Id,
+                   i.codigo        AS Codigo,
+                   i.nombre        AS Nombre,
+                   i.descripcion   AS Descripcion,
+                   i.id_categoria  AS IdCategoria,
+                   c.nombre        AS NombreCategoria,
+                   i.cantidad      AS Cantidad,
+                   i.stock_minimo  AS StockMinimo,
+                   i.unidad_medida AS UnidadMedida,
+                   i.ubicacion     AS Ubicacion,
+                   i.imagen_s3_key AS ImagenS3Key
             FROM items i
             LEFT JOIN categorias c ON c.id_categoria = i.id_categoria
             WHERE i.id_item = p_item_id
@@ -135,13 +1558,17 @@ CREATE OR REPLACE PACKAGE BODY pkg_items AS
         p_descripcion   IN  items.descripcion%TYPE,
         p_id_categoria  IN  items.id_categoria%TYPE,
         p_cantidad      IN  items.cantidad%TYPE,
+        p_stock_minimo  IN  items.stock_minimo%TYPE,
         p_unidad_medida IN  items.unidad_medida%TYPE,
         p_ubicacion     IN  items.ubicacion%TYPE,
+        p_imagen_s3_key IN  items.imagen_s3_key%TYPE,
         p_id_item_out   OUT items.id_item%TYPE
     ) IS
     BEGIN
-        INSERT INTO items (codigo, nombre, descripcion, id_categoria, cantidad, unidad_medida, ubicacion)
-        VALUES (p_codigo, p_nombre, p_descripcion, p_id_categoria, p_cantidad, p_unidad_medida, p_ubicacion)
+        INSERT INTO items (codigo, nombre, descripcion, id_categoria,
+                           cantidad, stock_minimo, unidad_medida, ubicacion, imagen_s3_key)
+        VALUES (p_codigo, p_nombre, p_descripcion, p_id_categoria,
+                p_cantidad, NVL(p_stock_minimo, 5), p_unidad_medida, p_ubicacion, p_imagen_s3_key)
         RETURNING id_item INTO p_id_item_out;
     END sp_insertar;
 
@@ -151,8 +1578,10 @@ CREATE OR REPLACE PACKAGE BODY pkg_items AS
         p_descripcion   IN items.descripcion%TYPE,
         p_id_categoria  IN items.id_categoria%TYPE,
         p_cantidad      IN items.cantidad%TYPE,
+        p_stock_minimo  IN items.stock_minimo%TYPE,
         p_unidad_medida IN items.unidad_medida%TYPE,
-        p_ubicacion     IN items.ubicacion%TYPE
+        p_ubicacion     IN items.ubicacion%TYPE,
+        p_imagen_s3_key IN items.imagen_s3_key%TYPE
     ) IS
     BEGIN
         UPDATE items
@@ -160,18 +1589,19 @@ CREATE OR REPLACE PACKAGE BODY pkg_items AS
                descripcion   = p_descripcion,
                id_categoria  = p_id_categoria,
                cantidad      = p_cantidad,
+               stock_minimo  = NVL(p_stock_minimo, stock_minimo),
                unidad_medida = p_unidad_medida,
                ubicacion     = p_ubicacion,
+               imagen_s3_key = p_imagen_s3_key,
                fecha_modif   = SYSDATE
          WHERE id_item = p_id_item;
     END sp_actualizar;
 
-    PROCEDURE sp_eliminar (
-        p_id_item IN items.id_item%TYPE
-    ) IS
+    -- Borrado logico: el item no se elimina, se marca como inactivo.
+    PROCEDURE sp_eliminar (p_id_item IN items.id_item%TYPE) IS
     BEGIN
         UPDATE items
-           SET activo = 'N',
+           SET activo      = 'N',
                fecha_modif = SYSDATE
          WHERE id_item = p_id_item;
     END sp_eliminar;
@@ -180,15 +1610,931 @@ END pkg_items;
 /
 
 
-INSERT INTO categorias (nombre, descripcion) VALUES ('Periféricos', 'Mouse, teclados, etc.');
-INSERT INTO items (codigo, nombre, descripcion, id_categoria, cantidad, unidad_medida, ubicacion) VALUES ('A001', 'Mouse', 'Mouse inalámbrico', 1, 15, 'unidad', 'Bodega A');
-INSERT INTO items (codigo, nombre, descripcion, id_categoria, cantidad, unidad_medida, ubicacion) VALUES ('A002', 'Teclado', 'Teclado mecánico', 1, 8, 'unidad', 'Bodega A');
+------------------------------------------------------------------------------
+-- 4.13 PKG_ACTIVOS
+------------------------------------------------------------------------------
+--  El sucesor de pkg_items. Los dos conviven mientras dure la migracion.
+--
+--  DOS COSAS QUE LO HACEN DISTINTO A TODO LO ANTERIOR:
+--
+--  1) TODOS los JOIN son LEFT JOIN, sin excepcion.
+--     En pkg_areas / pkg_espacios / pkg_modelos se uso JOIN normal porque esas
+--     FK son NOT NULL: la fila padre siempre existe y un INNER no puede perder
+--     nada. Aca es al reves: las siete FK son opcionales. Un activo recien
+--     cargado puede no tener marca, ni estado, ni ubicacion todavia. Con INNER
+--     JOIN ese activo DESAPARECERIA del listado sin ningun error visible: la
+--     consulta "funciona", solo que devuelve menos filas de las que hay. Es el
+--     tipo de bug que se descubre tarde y mal. Con LEFT JOIN la columna viene
+--     NULL y el activo sigue apareciendo.
+--
+--  2) espacios entra DOS VECES en el mismo query.
+--     id_ubicacion_origen y id_ubicacion_actual apuntan las dos a espacios, y
+--     un alias no se puede repetir. Van como 'eo' (origen) y 'ea' (actual).
+--     Sin alias distintos Oracle no sabe a cual de las dos te referis.
+--
+--  Las tres consultas (sp_listar, sp_buscar_por_codigo, sp_obtener_por_id)
+--  devuelven EXACTAMENTE las mismas columnas, igual que en pkg_items, para que
+--  del lado C# las tres mapeen contra el mismo modelo.
+--
+--  Sobre las ubicaciones: se trae el nombre del espacio, no la jerarquia
+--  completa "Edificio > Area > Espacio". Serian cuatro LEFT JOIN mas (dos por
+--  cada ubicacion) sobre una consulta que ya tiene siete. Si la grilla necesita
+--  el contexto completo, conviene resolverlo con pkg_espacios.sp_listar, que ya
+--  devuelve la jerarquia armada.
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_activos AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_buscar_por_codigo (
+        p_codigo IN  activos.codigo%TYPE,
+        p_cursor OUT SYS_REFCURSOR
+    );
+
+    PROCEDURE sp_obtener_por_id (
+        p_id_activo IN  activos.id_activo%TYPE,
+        p_cursor    OUT SYS_REFCURSOR
+    );
+
+    PROCEDURE sp_insertar (
+        p_codigo              IN  activos.codigo%TYPE,
+        p_nombre              IN  activos.nombre%TYPE,
+        p_descripcion         IN  activos.descripcion%TYPE,
+        p_id_categoria        IN  activos.id_categoria%TYPE,
+        p_id_marca            IN  activos.id_marca%TYPE,
+        p_id_modelo           IN  activos.id_modelo%TYPE,
+        p_numero_serie        IN  activos.numero_serie%TYPE,
+        p_id_estado           IN  activos.id_estado%TYPE,
+        p_id_ubicacion_origen IN  activos.id_ubicacion_origen%TYPE,
+        p_id_ubicacion_actual IN  activos.id_ubicacion_actual%TYPE,
+        p_responsable         IN  activos.responsable%TYPE,
+        p_fecha_compra        IN  activos.fecha_compra%TYPE,
+        p_costo               IN  activos.costo%TYPE,
+        p_garantia_hasta      IN  activos.garantia_hasta%TYPE,
+        p_observaciones       IN  activos.observaciones%TYPE,
+        p_creado_por          IN  activos.creado_por%TYPE,
+        p_id_activo_out       OUT activos.id_activo%TYPE
+    );
+
+    PROCEDURE sp_actualizar (
+        p_id_activo           IN activos.id_activo%TYPE,
+        p_nombre              IN activos.nombre%TYPE,
+        p_descripcion         IN activos.descripcion%TYPE,
+        p_id_categoria        IN activos.id_categoria%TYPE,
+        p_id_marca            IN activos.id_marca%TYPE,
+        p_id_modelo           IN activos.id_modelo%TYPE,
+        p_numero_serie        IN activos.numero_serie%TYPE,
+        p_id_estado           IN activos.id_estado%TYPE,
+        p_id_ubicacion_origen IN activos.id_ubicacion_origen%TYPE,
+        p_id_ubicacion_actual IN activos.id_ubicacion_actual%TYPE,
+        p_responsable         IN activos.responsable%TYPE,
+        p_fecha_compra        IN activos.fecha_compra%TYPE,
+        p_costo               IN activos.costo%TYPE,
+        p_garantia_hasta      IN activos.garantia_hasta%TYPE,
+        p_observaciones       IN activos.observaciones%TYPE,
+        p_actualizado_por     IN activos.actualizado_por%TYPE
+    );
+
+    PROCEDURE sp_eliminar (p_id_activo IN activos.id_activo%TYPE);
+
+END pkg_activos;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_activos AS
+
+    PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT a.id_activo            AS Id,
+                   a.codigo               AS Codigo,
+                   a.nombre               AS Nombre,
+                   a.descripcion          AS Descripcion,
+                   a.id_categoria         AS IdCategoria,
+                   c.nombre               AS NombreCategoria,
+                   a.id_marca             AS IdMarca,
+                   m.nombre               AS NombreMarca,
+                   a.id_modelo            AS IdModelo,
+                   o.nombre               AS NombreModelo,
+                   a.numero_serie         AS NumeroSerie,
+                   a.id_estado            AS IdEstado,
+                   s.nombre               AS NombreEstado,
+                   a.id_ubicacion_origen  AS IdUbicacionOrigen,
+                   eo.nombre              AS NombreUbicacionOrigen,
+                   a.id_ubicacion_actual  AS IdUbicacionActual,
+                   ea.nombre              AS NombreUbicacionActual,
+                   a.responsable          AS IdResponsable,
+                   u.nombre || ' ' || u.apellido AS NombreResponsable,
+                   a.fecha_compra         AS FechaCompra,
+                   a.costo                AS Costo,
+                   a.garantia_hasta       AS GarantiaHasta,
+                   a.observaciones        AS Observaciones,
+                   a.creado_por           AS CreadoPor,
+                   a.actualizado_por      AS ActualizadoPor,
+                   a.fecha_creacion       AS FechaCreacion,
+                   a.fecha_actualizacion  AS FechaActualizacion
+            FROM activos a
+            LEFT JOIN categorias c  ON c.id_categoria = a.id_categoria
+            LEFT JOIN marcas     m  ON m.id_marca     = a.id_marca
+            LEFT JOIN modelos    o  ON o.id_modelo    = a.id_modelo
+            LEFT JOIN estados    s  ON s.id_estado    = a.id_estado
+            LEFT JOIN espacios   eo ON eo.id_espacio  = a.id_ubicacion_origen
+            LEFT JOIN espacios   ea ON ea.id_espacio  = a.id_ubicacion_actual
+            LEFT JOIN usuarios   u  ON u.id_usuario   = a.responsable
+            WHERE a.activo = 'S'
+            ORDER BY a.nombre;
+    END sp_listar;
+
+    PROCEDURE sp_buscar_por_codigo (
+        p_codigo IN  activos.codigo%TYPE,
+        p_cursor OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT a.id_activo            AS Id,
+                   a.codigo               AS Codigo,
+                   a.nombre               AS Nombre,
+                   a.descripcion          AS Descripcion,
+                   a.id_categoria         AS IdCategoria,
+                   c.nombre               AS NombreCategoria,
+                   a.id_marca             AS IdMarca,
+                   m.nombre               AS NombreMarca,
+                   a.id_modelo            AS IdModelo,
+                   o.nombre               AS NombreModelo,
+                   a.numero_serie         AS NumeroSerie,
+                   a.id_estado            AS IdEstado,
+                   s.nombre               AS NombreEstado,
+                   a.id_ubicacion_origen  AS IdUbicacionOrigen,
+                   eo.nombre              AS NombreUbicacionOrigen,
+                   a.id_ubicacion_actual  AS IdUbicacionActual,
+                   ea.nombre              AS NombreUbicacionActual,
+                   a.responsable          AS IdResponsable,
+                   u.nombre || ' ' || u.apellido AS NombreResponsable,
+                   a.fecha_compra         AS FechaCompra,
+                   a.costo                AS Costo,
+                   a.garantia_hasta       AS GarantiaHasta,
+                   a.observaciones        AS Observaciones,
+                   a.creado_por           AS CreadoPor,
+                   a.actualizado_por      AS ActualizadoPor,
+                   a.fecha_creacion       AS FechaCreacion,
+                   a.fecha_actualizacion  AS FechaActualizacion
+            FROM activos a
+            LEFT JOIN categorias c  ON c.id_categoria = a.id_categoria
+            LEFT JOIN marcas     m  ON m.id_marca     = a.id_marca
+            LEFT JOIN modelos    o  ON o.id_modelo    = a.id_modelo
+            LEFT JOIN estados    s  ON s.id_estado    = a.id_estado
+            LEFT JOIN espacios   eo ON eo.id_espacio  = a.id_ubicacion_origen
+            LEFT JOIN espacios   ea ON ea.id_espacio  = a.id_ubicacion_actual
+            LEFT JOIN usuarios   u  ON u.id_usuario   = a.responsable
+            WHERE a.codigo = p_codigo
+              AND a.activo = 'S';
+    END sp_buscar_por_codigo;
+
+    PROCEDURE sp_obtener_por_id (
+        p_id_activo IN  activos.id_activo%TYPE,
+        p_cursor    OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT a.id_activo            AS Id,
+                   a.codigo               AS Codigo,
+                   a.nombre               AS Nombre,
+                   a.descripcion          AS Descripcion,
+                   a.id_categoria         AS IdCategoria,
+                   c.nombre               AS NombreCategoria,
+                   a.id_marca             AS IdMarca,
+                   m.nombre               AS NombreMarca,
+                   a.id_modelo            AS IdModelo,
+                   o.nombre               AS NombreModelo,
+                   a.numero_serie         AS NumeroSerie,
+                   a.id_estado            AS IdEstado,
+                   s.nombre               AS NombreEstado,
+                   a.id_ubicacion_origen  AS IdUbicacionOrigen,
+                   eo.nombre              AS NombreUbicacionOrigen,
+                   a.id_ubicacion_actual  AS IdUbicacionActual,
+                   ea.nombre              AS NombreUbicacionActual,
+                   a.responsable          AS IdResponsable,
+                   u.nombre || ' ' || u.apellido AS NombreResponsable,
+                   a.fecha_compra         AS FechaCompra,
+                   a.costo                AS Costo,
+                   a.garantia_hasta       AS GarantiaHasta,
+                   a.observaciones        AS Observaciones,
+                   a.creado_por           AS CreadoPor,
+                   a.actualizado_por      AS ActualizadoPor,
+                   a.fecha_creacion       AS FechaCreacion,
+                   a.fecha_actualizacion  AS FechaActualizacion
+            FROM activos a
+            LEFT JOIN categorias c  ON c.id_categoria = a.id_categoria
+            LEFT JOIN marcas     m  ON m.id_marca     = a.id_marca
+            LEFT JOIN modelos    o  ON o.id_modelo    = a.id_modelo
+            LEFT JOIN estados    s  ON s.id_estado    = a.id_estado
+            LEFT JOIN espacios   eo ON eo.id_espacio  = a.id_ubicacion_origen
+            LEFT JOIN espacios   ea ON ea.id_espacio  = a.id_ubicacion_actual
+            LEFT JOIN usuarios   u  ON u.id_usuario   = a.responsable
+            WHERE a.id_activo = p_id_activo
+              AND a.activo = 'S';
+    END sp_obtener_por_id;
+
+    PROCEDURE sp_insertar (
+        p_codigo              IN  activos.codigo%TYPE,
+        p_nombre              IN  activos.nombre%TYPE,
+        p_descripcion         IN  activos.descripcion%TYPE,
+        p_id_categoria        IN  activos.id_categoria%TYPE,
+        p_id_marca            IN  activos.id_marca%TYPE,
+        p_id_modelo           IN  activos.id_modelo%TYPE,
+        p_numero_serie        IN  activos.numero_serie%TYPE,
+        p_id_estado           IN  activos.id_estado%TYPE,
+        p_id_ubicacion_origen IN  activos.id_ubicacion_origen%TYPE,
+        p_id_ubicacion_actual IN  activos.id_ubicacion_actual%TYPE,
+        p_responsable         IN  activos.responsable%TYPE,
+        p_fecha_compra        IN  activos.fecha_compra%TYPE,
+        p_costo               IN  activos.costo%TYPE,
+        p_garantia_hasta      IN  activos.garantia_hasta%TYPE,
+        p_observaciones       IN  activos.observaciones%TYPE,
+        p_creado_por          IN  activos.creado_por%TYPE,
+        p_id_activo_out       OUT activos.id_activo%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO activos (codigo, nombre, descripcion, id_categoria, id_marca,
+                             id_modelo, numero_serie, id_estado, id_ubicacion_origen,
+                             id_ubicacion_actual, responsable, fecha_compra, costo,
+                             garantia_hasta, observaciones, creado_por)
+        VALUES (p_codigo, p_nombre, p_descripcion, p_id_categoria, p_id_marca,
+                p_id_modelo, p_numero_serie, p_id_estado, p_id_ubicacion_origen,
+                p_id_ubicacion_actual, p_responsable, p_fecha_compra, p_costo,
+                p_garantia_hasta, p_observaciones, p_creado_por)
+        RETURNING id_activo INTO p_id_activo_out;
+    END sp_insertar;
+
+    -- NO recibe p_codigo, y es a proposito: el codigo es la llave que va impresa
+    -- en el QR / codigo de barras pegado al activo. Si se pudiera editar, toda
+    -- etiqueta fisica ya impresa dejaria de servir. Dejarlo fuera de la firma lo
+    -- hace estructuralmente imposible, no depende de que la vista lo marque
+    -- readonly. Mismo criterio que pkg_items.sp_actualizar.
+    -- Si alguna vez hace falta corregir un codigo mal cargado, que sea por un
+    -- procedimiento aparte y explicito, no por el update de todos los dias.
+    PROCEDURE sp_actualizar (
+        p_id_activo           IN activos.id_activo%TYPE,
+        p_nombre              IN activos.nombre%TYPE,
+        p_descripcion         IN activos.descripcion%TYPE,
+        p_id_categoria        IN activos.id_categoria%TYPE,
+        p_id_marca            IN activos.id_marca%TYPE,
+        p_id_modelo           IN activos.id_modelo%TYPE,
+        p_numero_serie        IN activos.numero_serie%TYPE,
+        p_id_estado           IN activos.id_estado%TYPE,
+        p_id_ubicacion_origen IN activos.id_ubicacion_origen%TYPE,
+        p_id_ubicacion_actual IN activos.id_ubicacion_actual%TYPE,
+        p_responsable         IN activos.responsable%TYPE,
+        p_fecha_compra        IN activos.fecha_compra%TYPE,
+        p_costo               IN activos.costo%TYPE,
+        p_garantia_hasta      IN activos.garantia_hasta%TYPE,
+        p_observaciones       IN activos.observaciones%TYPE,
+        p_actualizado_por     IN activos.actualizado_por%TYPE
+    ) IS
+    BEGIN
+        UPDATE activos
+           SET nombre              = p_nombre,
+               descripcion         = p_descripcion,
+               id_categoria        = p_id_categoria,
+               id_marca            = p_id_marca,
+               id_modelo           = p_id_modelo,
+               numero_serie        = p_numero_serie,
+               id_estado           = p_id_estado,
+               id_ubicacion_origen = p_id_ubicacion_origen,
+               id_ubicacion_actual = p_id_ubicacion_actual,
+               responsable         = p_responsable,
+               fecha_compra        = p_fecha_compra,
+               costo               = p_costo,
+               garantia_hasta      = p_garantia_hasta,
+               observaciones       = p_observaciones,
+               actualizado_por     = p_actualizado_por,
+               fecha_actualizacion = SYSDATE
+         WHERE id_activo = p_id_activo;
+    END sp_actualizar;
+
+    -- Borrado logico: el activo no se elimina, se marca como inactivo.
+    PROCEDURE sp_eliminar (p_id_activo IN activos.id_activo%TYPE) IS
+    BEGIN
+        UPDATE activos
+           SET activo              = 'N',
+               fecha_actualizacion = SYSDATE
+         WHERE id_activo = p_id_activo;
+    END sp_eliminar;
+
+END pkg_activos;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.14 PKG_MOVIMIENTOS
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_movimientos AS
+
+    PROCEDURE sp_registrar (
+        p_id_item         IN movimientos_inventario.id_item%TYPE,
+        p_tipo_movimiento IN movimientos_inventario.tipo_movimiento%TYPE,
+        p_cantidad        IN movimientos_inventario.cantidad%TYPE,
+        p_observaciones   IN movimientos_inventario.observaciones%TYPE
+    );
+
+    PROCEDURE sp_listar_por_item (
+        p_id_item IN  movimientos_inventario.id_item%TYPE,
+        p_cursor  OUT SYS_REFCURSOR
+    );
+
+END pkg_movimientos;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_movimientos AS
+
+    PROCEDURE sp_registrar (
+        p_id_item         IN movimientos_inventario.id_item%TYPE,
+        p_tipo_movimiento IN movimientos_inventario.tipo_movimiento%TYPE,
+        p_cantidad        IN movimientos_inventario.cantidad%TYPE,
+        p_observaciones   IN movimientos_inventario.observaciones%TYPE
+    ) IS
+        v_cantidad_actual items.cantidad%TYPE;
+    BEGIN
+        -- Paso 1: leer la cantidad actual y BLOQUEAR esa fila hasta que termine
+        -- la transaccion. Esto evita que dos movimientos simultaneos sobre el
+        -- mismo item se pisen entre si (ej. dos personas sacando el ultimo
+        -- producto al mismo tiempo).
+        SELECT cantidad INTO v_cantidad_actual
+        FROM items
+        WHERE id_item = p_id_item
+        FOR UPDATE;
+
+        -- Paso 2: si es salida, validar que no se vaya a negativo ANTES de tocar nada.
+        IF p_tipo_movimiento = 'SALIDA' AND v_cantidad_actual < p_cantidad THEN
+            RAISE_APPLICATION_ERROR(-20001, 'No hay suficiente stock para realizar esta salida.');
+        END IF;
+
+        -- Paso 3: actualizar la cantidad segun el tipo de movimiento.
+        IF p_tipo_movimiento = 'ENTRADA' THEN
+            UPDATE items
+               SET cantidad    = cantidad + p_cantidad,
+                   fecha_modif = SYSDATE
+             WHERE id_item = p_id_item;
+        ELSE
+            UPDATE items
+               SET cantidad    = cantidad - p_cantidad,
+                   fecha_modif = SYSDATE
+             WHERE id_item = p_id_item;
+        END IF;
+
+        -- Paso 4: dejar el registro del movimiento.
+        INSERT INTO movimientos_inventario (id_item, tipo_movimiento, cantidad, observaciones)
+        VALUES (p_id_item, p_tipo_movimiento, p_cantidad, p_observaciones);
+
+    END sp_registrar;
+
+    PROCEDURE sp_listar_por_item (
+        p_id_item IN  movimientos_inventario.id_item%TYPE,
+        p_cursor  OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT m.id_movimiento   AS Id,
+                   m.id_item         AS IdItem,
+                   m.tipo_movimiento AS TipoMovimiento,
+                   m.cantidad        AS Cantidad,
+                   m.fecha           AS Fecha,
+                   m.observaciones   AS Observaciones
+            FROM movimientos_inventario m
+            WHERE m.id_item = p_id_item
+            ORDER BY m.fecha DESC;
+    END sp_listar_por_item;
+
+END pkg_movimientos;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.15 PKG_HISTORIAL (bitacora de auditoria)
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_historial AS
+
+    PROCEDURE sp_registrar (
+        p_id_item    IN historial_items.id_item%TYPE,
+        p_id_usuario IN historial_items.id_usuario%TYPE,
+        p_accion     IN historial_items.accion%TYPE,
+        p_detalle    IN historial_items.detalle%TYPE
+    );
+
+    PROCEDURE sp_listar_por_item (
+        p_id_item IN  historial_items.id_item%TYPE,
+        p_cursor  OUT SYS_REFCURSOR
+    );
+
+END pkg_historial;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_historial AS
+
+    PROCEDURE sp_registrar (
+        p_id_item    IN historial_items.id_item%TYPE,
+        p_id_usuario IN historial_items.id_usuario%TYPE,
+        p_accion     IN historial_items.accion%TYPE,
+        p_detalle    IN historial_items.detalle%TYPE
+    ) IS
+    BEGIN
+        INSERT INTO historial_items (id_item, id_usuario, accion, detalle)
+        VALUES (p_id_item, p_id_usuario, p_accion, p_detalle);
+    END sp_registrar;
+
+    PROCEDURE sp_listar_por_item (
+        p_id_item IN  historial_items.id_item%TYPE,
+        p_cursor  OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT h.id_historial                 AS Id,
+                   h.id_item                      AS IdItem,
+                   h.id_usuario                   AS IdUsuario,
+                   u.nombre || ' ' || u.apellido  AS NombreUsuario,
+                   h.accion                       AS Accion,
+                   h.fecha                        AS Fecha,
+                   h.detalle                      AS Detalle
+            FROM historial_items h
+            LEFT JOIN usuarios u ON u.id_usuario = h.id_usuario
+            WHERE h.id_item = p_id_item
+            ORDER BY h.fecha DESC;
+    END sp_listar_por_item;
+
+END pkg_historial;
+/
+
+
+------------------------------------------------------------------------------
+-- 4.16 PKG_DASHBOARD (metricas de la pantalla de inicio)
+------------------------------------------------------------------------------
+--  Paquete de SOLO LECTURA: ningun procedure de aca escribe nada. Su unico
+--  trabajo es responder las cinco preguntas que arma la home:
+--
+--    1. Como esta el inventario ahora mismo?        -> sp_kpis
+--    2. Que tengo que reponer, y que tan urgente?   -> sp_reposicion_urgente
+--    3. Que es lo que mas se mueve?                 -> sp_mas_movidos
+--    4. Que items concentran el movimiento?         -> sp_clasificacion_abc
+--    5. Quien hizo que, y cuando?                   -> sp_bitacora_reciente
+--
+--  DOS CONVENCIONES QUE HAY QUE RESPETAR EN TODO EL PAQUETE:
+--
+--  1) Los alias van en PascalCase exacto (AS TotalItems, no AS total_items).
+--     Database.SqlQuery<T> mapea columna -> propiedad por nombre y NO convierte
+--     snake_case a PascalCase. Un alias mal escrito no truena: la propiedad se
+--     queda en su valor default y el dashboard muestra ceros sin ningun error.
+--
+--  2) Los enteros van envueltos en CAST(... AS NUMBER(9)). COUNT() y SUM()
+--     devuelven NUMBER sin precision declarada, y el proveedor de Oracle lo
+--     mapea a decimal/long, no a int -> InvalidCastException al materializar en
+--     una propiedad int de C#. NUMBER(9) cabe garantizado en un Int32.
+------------------------------------------------------------------------------
+CREATE OR REPLACE PACKAGE pkg_dashboard AS
+
+    PROCEDURE sp_kpis (p_cursor OUT SYS_REFCURSOR);
+
+    PROCEDURE sp_reposicion_urgente (
+        p_dias   IN  NUMBER,
+        p_cursor OUT SYS_REFCURSOR
+    );
+
+    PROCEDURE sp_mas_movidos (
+        p_dias   IN  NUMBER,
+        p_top    IN  NUMBER,
+        p_cursor OUT SYS_REFCURSOR
+    );
+
+    PROCEDURE sp_clasificacion_abc (
+        p_dias   IN  NUMBER,
+        p_cursor OUT SYS_REFCURSOR
+    );
+
+    PROCEDURE sp_bitacora_reciente (
+        p_limite IN  NUMBER,
+        p_cursor OUT SYS_REFCURSOR
+    );
+
+END pkg_dashboard;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_dashboard AS
+
+    ----------------------------------------------------------------------------
+    -- sp_kpis: los numeros grandes de la fila de arriba.
+    --
+    --  Devuelve UNA sola fila con cinco subqueries escalares sobre DUAL, en vez
+    --  de cinco viajes a la base. DUAL es la tabla de una fila de Oracle: sirve
+    --  justo para esto, para hacer un SELECT de valores calculados sin tener una
+    --  tabla real de la cual partir.
+    ----------------------------------------------------------------------------
+    PROCEDURE sp_kpis (p_cursor OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT
+                CAST((SELECT COUNT(*)
+                      FROM items
+                      WHERE activo = 'S') AS NUMBER(9))                AS TotalItems,
+
+                CAST((SELECT NVL(SUM(cantidad), 0)
+                      FROM items
+                      WHERE activo = 'S') AS NUMBER(9))                AS TotalUnidades,
+
+                CAST((SELECT COUNT(*)
+                      FROM items
+                      WHERE activo = 'S'
+                        AND cantidad = 0) AS NUMBER(9))                AS ItemsAgotados,
+
+                -- "bajo minimo" excluye a proposito los que ya estan en cero:
+                -- esos ya se cuentan como agotados y no queremos contarlos dos
+                -- veces en la misma fila de KPIs.
+                CAST((SELECT COUNT(*)
+                      FROM items
+                      WHERE activo = 'S'
+                        AND cantidad > 0
+                        AND cantidad <= stock_minimo) AS NUMBER(9))    AS ItemsBajoMinimo,
+
+                -- TRUNC(SYSDATE) = hoy a las 00:00. Comparar contra eso trae
+                -- los movimientos del dia SIN aplicarle una funcion a la
+                -- columna fecha (si escribieramos TRUNC(m.fecha) = TRUNC(SYSDATE)
+                -- Oracle no podria usar un indice sobre fecha).
+                CAST((SELECT COUNT(*)
+                      FROM movimientos_inventario
+                      WHERE fecha >= TRUNC(SYSDATE)) AS NUMBER(9))     AS MovimientosHoy
+            FROM dual;
+    END sp_kpis;
+
+    ----------------------------------------------------------------------------
+    -- sp_reposicion_urgente: que reponer, ordenado por urgencia REAL.
+    --
+    --  La idea central son los DIAS DE COBERTURA: en vez de avisar "stock bajo"
+    --  cuando la cantidad cruza un numero, calcula a que ritmo se consume el
+    --  item y proyecta cuando llega a cero.
+    --
+    --      consumo_diario = salidas de los ultimos p_dias / p_dias
+    --      dias_cobertura = cantidad actual / consumo_diario
+    --
+    --  Un item con 3 unidades que nadie pide NO es urgente. Uno con 40 que
+    --  salen 8 por dia se acaba el jueves. El orden de la lista sale de eso,
+    --  no de la cantidad absoluta.
+    --
+    --  LEFT JOIN contra el consumo, no INNER: un item que nunca se ha movido
+    --  tiene que seguir apareciendo si esta por debajo de su stock_minimo.
+    --  Con INNER JOIN desapareceria de la lista sin ningun error visible.
+    --
+    --  DiasCobertura y FechaAgotamiento quedan NULL a proposito cuando no hay
+    --  consumo: NULL significa "no se puede proyectar", que no es lo mismo que
+    --  cero dias. Del lado C# se mapean a int? y DateTime?.
+    ----------------------------------------------------------------------------
+    PROCEDURE sp_reposicion_urgente (
+        p_dias   IN  NUMBER,
+        p_cursor OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT * FROM (
+                WITH consumo AS (
+                    SELECT m.id_item,
+                           SUM(m.cantidad) / p_dias AS consumo_diario
+                    FROM movimientos_inventario m
+                    WHERE m.tipo_movimiento = 'SALIDA'
+                      AND m.fecha >= SYSDATE - p_dias
+                    GROUP BY m.id_item
+                )
+                SELECT i.id_item                              AS Id,
+                       i.codigo                               AS Codigo,
+                       i.nombre                               AS Nombre,
+                       CAST(i.cantidad     AS NUMBER(9))      AS Cantidad,
+                       CAST(i.stock_minimo AS NUMBER(9))      AS StockMinimo,
+                       i.unidad_medida                        AS UnidadMedida,
+                       ROUND(NVL(c.consumo_diario, 0), 2)     AS ConsumoDiario,
+
+                       CASE WHEN c.consumo_diario > 0
+                            THEN CAST(FLOOR(i.cantidad / c.consumo_diario) AS NUMBER(9))
+                       END                                    AS DiasCobertura,
+
+                       CASE WHEN c.consumo_diario > 0
+                            THEN TRUNC(SYSDATE) + FLOOR(i.cantidad / c.consumo_diario)
+                       END                                    AS FechaAgotamiento
+                FROM items i
+                LEFT JOIN consumo c ON c.id_item = i.id_item
+                WHERE i.activo = 'S'
+                  AND (
+                        -- ya cayo por debajo de su propio punto de reorden...
+                        i.cantidad <= i.stock_minimo
+                        -- ...o al ritmo actual no llega a las dos semanas.
+                        OR (c.consumo_diario > 0
+                            AND i.cantidad / c.consumo_diario < 14)
+                      )
+                ORDER BY
+                    -- 1o los agotados, 2o los que se acaban antes, 3o el resto.
+                    CASE WHEN i.cantidad = 0 THEN 0 ELSE 1 END,
+                    NVL(FLOOR(i.cantidad / c.consumo_diario), 9999),
+                    i.nombre
+            )
+            WHERE ROWNUM <= 10;
+    END sp_reposicion_urgente;
+
+    ----------------------------------------------------------------------------
+    -- sp_mas_movidos: top N por volumen movido en la ventana de p_dias.
+    --
+    --  El total se desglosa en entradas y salidas para que la vista pueda
+    --  pintar la barra en dos colores: dos items pueden mover 200 unidades y
+    --  significar cosas opuestas (uno se repone, el otro se consume).
+    --
+    --  ROWNUM <= p_top va en un SELECT de AFUERA, nunca junto al ORDER BY:
+    --  Oracle asigna ROWNUM ANTES de ordenar, asi que ponerlos en el mismo
+    --  nivel devuelve "las primeras N filas que aparecieron, luego ordenadas",
+    --  no el top N. Es un clasico de entrevista.
+    ----------------------------------------------------------------------------
+    PROCEDURE sp_mas_movidos (
+        p_dias   IN  NUMBER,
+        p_top    IN  NUMBER,
+        p_cursor OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT * FROM (
+                SELECT i.id_item                                AS Id,
+                       i.codigo                                 AS Codigo,
+                       i.nombre                                 AS Nombre,
+                       CAST(SUM(m.cantidad) AS NUMBER(9))       AS TotalMovido,
+                       CAST(SUM(CASE WHEN m.tipo_movimiento = 'ENTRADA'
+                                     THEN m.cantidad ELSE 0 END) AS NUMBER(9))
+                                                                AS TotalEntradas,
+                       CAST(SUM(CASE WHEN m.tipo_movimiento = 'SALIDA'
+                                     THEN m.cantidad ELSE 0 END) AS NUMBER(9))
+                                                                AS TotalSalidas,
+                       CAST(COUNT(*) AS NUMBER(9))              AS NumMovimientos
+                FROM movimientos_inventario m
+                JOIN items i ON i.id_item = m.id_item
+                WHERE m.fecha >= SYSDATE - p_dias
+                  AND i.activo = 'S'
+                GROUP BY i.id_item, i.codigo, i.nombre
+                ORDER BY SUM(m.cantidad) DESC
+            )
+            WHERE ROWNUM <= p_top;
+    END sp_mas_movidos;
+
+    ----------------------------------------------------------------------------
+    -- sp_clasificacion_abc: analisis de Pareto sobre el movimiento.
+    --
+    --  Regla del 80/20 aplicada al almacen: se ordenan los items por volumen
+    --  movido y se van acumulando. Los que juntos suman el primer 80% del
+    --  movimiento son clase A (pocos items, casi toda la actividad: hay que
+    --  vigilarlos de cerca), hasta el 95% son B, y la cola larga es C.
+    --
+    --  Aca esta la parte interesante en PL/SQL, las FUNCIONES ANALITICAS:
+    --
+    --    RATIO_TO_REPORT(vol) OVER ()
+    --        -> que porcentaje del total representa ESTA fila.
+    --
+    --    SUM(vol) OVER (ORDER BY vol DESC, id_item
+    --                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+    --        -> suma acumulada: total de esta fila y todas las anteriores.
+    --
+    --  La diferencia con un GROUP BY normal es que estas NO colapsan filas:
+    --  cada item conserva su renglon y ademas recibe un valor calculado sobre
+    --  el conjunto. Con GROUP BY habria que hacer un self-join para lograrlo.
+    --
+    --  Detalles que importan:
+    --    - El ORDER BY del OVER lleva id_item como desempate. Sin el, dos items
+    --      con el mismo volumen quedan en orden indefinido y el acumulado puede
+    --      cambiar entre ejecuciones.
+    --    - ROWS (no RANGE) fuerza el acumulado fila por fila. Con RANGE, filas
+    --      empatadas comparten el mismo acumulado y pueden saltar de clase.
+    ----------------------------------------------------------------------------
+    PROCEDURE sp_clasificacion_abc (
+        p_dias   IN  NUMBER,
+        p_cursor OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            WITH volumen AS (
+                SELECT i.id_item,
+                       i.codigo,
+                       i.nombre,
+                       SUM(m.cantidad) AS vol
+                FROM movimientos_inventario m
+                JOIN items i ON i.id_item = m.id_item
+                WHERE m.fecha >= SYSDATE - p_dias
+                  AND i.activo = 'S'
+                GROUP BY i.id_item, i.codigo, i.nombre
+            ),
+            acumulado AS (
+                SELECT v.id_item,
+                       v.codigo,
+                       v.nombre,
+                       v.vol,
+                       RATIO_TO_REPORT(v.vol) OVER () AS pct,
+                       SUM(v.vol) OVER (ORDER BY v.vol DESC, v.id_item
+                                        ROWS BETWEEN UNBOUNDED PRECEDING
+                                                 AND CURRENT ROW)
+                           / SUM(v.vol) OVER ()       AS pct_acum
+                FROM volumen v
+            )
+            SELECT a.id_item                       AS Id,
+                   a.codigo                        AS Codigo,
+                   a.nombre                        AS Nombre,
+                   CAST(a.vol AS NUMBER(9))        AS Volumen,
+                   ROUND(a.pct * 100, 1)           AS PorcentajeIndividual,
+                   ROUND(a.pct_acum * 100, 1)      AS PorcentajeAcumulado,
+                   CASE WHEN a.pct_acum <= 0.80 THEN 'A'
+                        WHEN a.pct_acum <= 0.95 THEN 'B'
+                        ELSE 'C'
+                   END                             AS Clase
+            FROM acumulado a
+            ORDER BY a.vol DESC, a.id_item;
+    END sp_clasificacion_abc;
+
+    ----------------------------------------------------------------------------
+    -- sp_bitacora_reciente: el feed de auditoria global.
+    --
+    --  pkg_historial.sp_listar_por_item responde "que le paso a ESTE item".
+    --  Esta responde la pregunta inversa, que es la del dashboard: "que paso
+    --  en el sistema, sin importar el item". Mismo dato, otra pregunta.
+    --
+    --  Los dos JOIN son LEFT: el historial es una bitacora de auditoria y tiene
+    --  que sobrevivir a que el item o el usuario referenciado ya no esten. Con
+    --  INNER JOIN, borrar un usuario haria desaparecer su rastro justo de la
+    --  tabla que existe para conservarlo.
+    ----------------------------------------------------------------------------
+    PROCEDURE sp_bitacora_reciente (
+        p_limite IN  NUMBER,
+        p_cursor OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT * FROM (
+                SELECT h.id_historial                AS Id,
+                       h.id_item                     AS IdItem,
+                       i.codigo                      AS CodigoItem,
+                       i.nombre                      AS NombreItem,
+                       h.id_usuario                  AS IdUsuario,
+                       u.nombre || ' ' || u.apellido AS NombreUsuario,
+                       h.accion                      AS Accion,
+                       h.fecha                       AS Fecha,
+                       h.detalle                     AS Detalle
+                FROM historial_items h
+                LEFT JOIN usuarios u ON u.id_usuario = h.id_usuario
+                LEFT JOIN items    i ON i.id_item    = h.id_item
+                ORDER BY h.fecha DESC, h.id_historial DESC
+            )
+            WHERE ROWNUM <= p_limite;
+    END sp_bitacora_reciente;
+
+END pkg_dashboard;
+/
+
+
+--==============================================================================
+-- 5. MIGRACION FINAL: RETIRAR usuarios.rol
+--==============================================================================
+--  Esta seccion va DESPUES de la 4 a proposito. El orden importa:
+--
+--    1) roles ya sembrados          -> seccion 3.2
+--    2) pkg_usuarios ya recompilado -> seccion 4.1 (su SELECT ya no pide 'rol')
+--    3) recien ahora: pasar los datos de rol a id_rol y borrar la columna
+--
+--  Si se borra la columna antes del paso 2, pkg_usuarios queda INVALID y el
+--  login se cae hasta que alguien lo recompile a mano.
+--
+--  Del lado C# esto ya esta listo: Models/Usuario.cs no tiene la propiedad Rol
+--  y AccountController guarda string.Empty en el ticket, porque la autorizacion
+--  la resuelve AuthorizePermisoAttribute leyendo permisos en vivo.
+--------------------------------------------------------------------------------
+
+-- 5.1 Pasar los datos de rol (texto) a id_rol (FK) ------------------------
+--
+--  OJO con el mapeo de 'ADMIN': el usuario semilla de la seccion 3.1 se inserta
+--  con rol = 'ADMIN', pero en la tabla roles NO existe ningun rol con ese
+--  nombre (solo EMPLEADO, JEFE_AREA y JEFE). Sin el CASE de abajo el admin se
+--  quedaria con id_rol NULL, sp_obtener_por_usuario no le devolveria ni un
+--  permiso y quedaria bloqueado de toda la app.
+--
+--  Se mapea ADMIN -> JEFE, que es el rol de control total. Si preferis otra
+--  equivalencia, cambiala aca ANTES de correr.
+--
+--  El WHERE id_rol IS NULL hace que se pueda correr mas de una vez sin pisar
+--  asignaciones ya hechas a mano.
+UPDATE usuarios u
+   SET u.id_rol = (
+           SELECT r.id_rol
+           FROM roles r
+           WHERE r.nombre = CASE u.rol
+                                WHEN 'ADMIN' THEN 'JEFE'
+                                ELSE u.rol
+                            END
+       )
+ WHERE u.id_rol IS NULL;
+
 COMMIT;
-SELECT * FROM items;
+
+-- 5.2 Control antes de borrar --------------------------------------------
+--     Tiene que devolver CERO filas. Si devuelve alguna, es un usuario cuyo
+--     rol de texto no matcheo contra ningun nombre de la tabla roles: hay que
+--     arreglarlo a mano antes de seguir, porque despues del DROP ya no se sabe
+--     que rol tenia.
+--
+-- SELECT id_usuario, usuario_login, rol, id_rol
+-- FROM usuarios
+-- WHERE id_rol IS NULL;
+
+-- 5.3 Borrar la columna vieja --------------------------------------------
+--     Irreversible: no hay vuelta atras sin restore. Correr solo despues de
+--     que 5.2 haya dado cero filas.
+ALTER TABLE usuarios DROP COLUMN rol;
 
 
-SELECT line, position, text
-FROM user_errors
-WHERE name = 'PKG_ITEMS'
-  AND type = 'PACKAGE BODY'
-ORDER BY sequence;
+--==============================================================================
+-- 6. VERIFICACION (OPCIONAL)
+--==============================================================================
+--  Estas consultas NO son parte del despliegue. Estan comentadas a proposito:
+--  descomentar y correr a mano cuando se quiera comprobar algo.
+--------------------------------------------------------------------------------
+
+-- 6.1 Ver los permisos efectivos de un usuario, usando el paquete.
+--     Requiere SET SERVEROUTPUT ON en SQL*Plus / SQL Developer.
+--
+-- SET SERVEROUTPUT ON
+-- DECLARE
+--     v_cursor  SYS_REFCURSOR;
+--     v_permiso VARCHAR2(50);
+-- BEGIN
+--     pkg_permisos.sp_obtener_por_usuario(1, v_cursor);  -- id del usuario admin
+--     LOOP
+--         FETCH v_cursor INTO v_permiso;
+--         EXIT WHEN v_cursor%NOTFOUND;
+--         DBMS_OUTPUT.PUT_LINE(v_permiso);
+--     END LOOP;
+--     CLOSE v_cursor;
+-- END;
+-- /
+
+-- 6.2 La misma logica, pero como SELECT suelto (mas comodo para ver la grilla).
+--
+-- SELECT DISTINCT p.nombre AS Nombre
+-- FROM permisos p
+-- WHERE p.id_permiso IN (
+--         SELECT rp.id_permiso
+--         FROM rol_permisos rp
+--         JOIN usuarios u ON u.id_rol = rp.id_rol
+--         WHERE u.id_usuario = 1          -- id del usuario admin
+--         UNION
+--         SELECT up.id_permiso
+--         FROM usuario_permisos up
+--         WHERE up.id_usuario = 1 AND up.concedido = 'S'
+--       )
+--   AND p.id_permiso NOT IN (
+--         SELECT up.id_permiso
+--         FROM usuario_permisos up
+--         WHERE up.id_usuario = 1 AND up.concedido = 'N'
+--       );
+
+-- 6.3 Revisar si algun paquete quedo con errores de compilacion.
+--
+-- SELECT name, type, line, position, text
+-- FROM user_errors
+-- ORDER BY name, sequence;
+
+-- 6.4 Probar pkg_dashboard ANTES de tocar C#.
+--
+--     Regla de oro: si un procedure de aca no se prueba primero en SQL, cuando
+--     el dashboard muestre ceros no vas a saber si el bug esta en el SQL, en el
+--     Repository o en el alias del cursor. Probalo aislado y despues conectalo.
+--
+--     En SQL Developer: correr las cuatro lineas y ver la grilla en la pestaña
+--     de resultados.
+--
+-- VAR c REFCURSOR;
+-- EXEC pkg_dashboard.sp_kpis(:c);
+-- PRINT c;
+--
+-- EXEC pkg_dashboard.sp_reposicion_urgente(30, :c);
+-- PRINT c;
+--
+-- EXEC pkg_dashboard.sp_mas_movidos(30, 5, :c);
+-- PRINT c;
+--
+-- EXEC pkg_dashboard.sp_clasificacion_abc(30, :c);
+-- PRINT c;
+--
+-- EXEC pkg_dashboard.sp_bitacora_reciente(10, :c);
+-- PRINT c;
+--
+--     Que mirar en el resultado:
+--       - Los encabezados de columna tienen que salir en PascalCase exacto
+--         (TotalItems, DiasCobertura...). Si Oracle los muestra en MAYUSCULAS
+--         es porque falto el alias entre comillas o se escribio mal: el mapeo
+--         a C# es case-insensitive, asi que TOTALITEMS si funciona, pero
+--         total_items NO.
+--       - En sp_reposicion_urgente, un item sin salidas recientes debe traer
+--         DiasCobertura y FechaAgotamiento en NULL (no en cero).
+--       - En sp_clasificacion_abc, PorcentajeAcumulado de la ultima fila debe
+--         dar 100. Si da otra cosa, el ORDER BY de la ventana esta mal.
+--
+--     Si todavia no hay movimientos cargados, casi todo va a venir vacio. Para
+--     tener datos con los que probar de verdad, registrar unas cuantas
+--     entradas/salidas desde la app (Items -> Detalles -> Registrar movimiento).
+
+--==============================================================================
+-- FIN DEL SCRIPT
+--==============================================================================

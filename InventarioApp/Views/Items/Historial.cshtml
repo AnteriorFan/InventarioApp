@@ -1,0 +1,52 @@
+@model IEnumerable<InventarioApp.Models.HistorialItem>
+
+@{
+    ViewBag.Title = "Historial del item";
+    if (Request.IsAjaxRequest()) { Layout = null; }
+}
+
+<div class="modal-header">
+    <h5 class="modal-title">Historial de cambios</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+</div>
+<div class="modal-body">
+    @if (!Model.Any())
+    {
+        <div class="empty">Este item no tiene cambios registrados todavía.</div>
+    }
+    else
+    {
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var h in Model)
+                {
+                    <tr>
+                        <td class="text-nowrap">@h.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@h.NombreUsuario</td>
+                        <td>
+                            @switch (h.Accion)
+                            {
+                                case "ALTA":
+                                    <span class="badge bg-success">Alta</span>
+                                    break;
+                                case "BAJA":
+                                    <span class="badge bg-danger">Baja</span>
+                                    break;
+                                default:
+                                    <span class="badge bg-primary">Modificación</span>
+                                    break;
+                            }
+                        </td>
+                        <td class="text-muted-sm">@h.Detalle</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+</div>

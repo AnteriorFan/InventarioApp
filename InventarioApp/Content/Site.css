@@ -1,20 +1,1030 @@
-﻿/* Set padding to keep content from hitting the edges */
+/* ============================================================================
+   InventarioApp — capa de tema
+   ============================================================================
+
+   Esto NO reemplaza a Bootstrap: se carga DESPUES de bootstrap.css (ver el
+   StyleBundle "~/Content/css" en App_Start/BundleConfig.cs) y le cambia la
+   apariencia por encima.
+
+   Bootstrap 5.3 expone casi todo su diseño como variables CSS propias
+   (--bs-body-bg, --bs-primary, --bs-border-radius...). Redefinirlas en :root
+   es mucho mas barato que pelear con cada selector a punta de !important:
+   se cambia el valor en UN lugar y todos los componentes que lo consumen
+   (botones, cards, tablas, modales, badges) se actualizan solos.
+
+   Orden del archivo:
+     1. Tokens          — los valores del diseño, en un solo lugar
+     2. Base            — body, tipografia, titulos
+     3. Navbar
+     4. Cards y superficies
+     5. Tablas
+     6. Formularios
+     7. Botones y badges
+     8. Modales
+     9. Componentes del dashboard
+    10. Utilidades propias
+   ========================================================================= */
+
+
+/* ---------------------------------------------------------------------------
+   1. TOKENS
+   ------------------------------------------------------------------------ */
+:root {
+    /* Superficies y texto. La app vive sobre un gris casi blanco (--bg) y las
+       tarjetas son blanco puro: esa diferencia minima es la que hace que una
+       card se lea como "encima" sin necesidad de sombras pesadas. */
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --surface-alt: #f9fafb;
+    --border: #e5e7eb;
+    --border-strong: #d1d5db;
+
+    --text: #111827;
+    --text-soft: #4b5563;
+    --muted: #6b7280;
+
+    /* Un solo color de acento en toda la app. Cuando todo puede resaltar,
+       nada resalta: el azul se reserva para acciones y estado activo. */
+    --accent: #2563eb;
+    --accent-soft: #eff6ff;
+    --accent-border: #bfdbfe;
+
+    /* Semanticos. Cada uno con su version "soft" para fondos de badge. */
+    --ok: #059669;
+    --ok-soft: #ecfdf5;
+    --warn: #b45309;
+    --warn-soft: #fffbeb;
+    --danger: #dc2626;
+    --danger-soft: #fef2f2;
+
+    --radius: 10px;
+    --radius-sm: 8px;
+
+    /* Una sola capa de sombra, muy suave. Se usa solo en elementos flotantes
+       (modal, dropdown), nunca en cards estaticas. */
+    --shadow: 0 1px 3px rgba(17, 24, 39, .08), 0 8px 24px rgba(17, 24, 39, .06);
+
+    /* --- Sobrescritura de las variables de Bootstrap --- */
+    --bs-body-bg: var(--bg);
+    --bs-body-color: var(--text);
+    --bs-border-color: var(--border);
+    --bs-border-radius: var(--radius);
+    --bs-border-radius-sm: var(--radius-sm);
+    --bs-border-radius-lg: var(--radius);
+    --bs-primary: var(--accent);
+    --bs-primary-rgb: 37, 99, 235;
+    --bs-link-color: var(--accent);
+    --bs-link-color-rgb: 37, 99, 235;
+    --bs-link-hover-color: #1d4ed8;
+
+    /* Stack de sistema: en Windows cae en Segoe UI, en Mac en SF. Cero
+       dependencia de una CDN de fuentes y cero parpadeo al cargar. */
+    --bs-body-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                           "Helvetica Neue", Arial, sans-serif;
+    --bs-body-font-size: .9375rem;   /* 15px */
+    --bs-body-line-height: 1.55;
+}
+
+
+/* ---------------------------------------------------------------------------
+   2. BASE
+   ------------------------------------------------------------------------ */
+body {
+    background-color: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+}
+
 .body-content {
-    margin-top: 15px;
-    padding-left: 15px;
-    padding-right: 15px;
+    margin-top: 1.75rem;
+    padding-bottom: 3rem;
 }
 
-/* Override the default bootstrap behavior where horizontal description lists 
-   will truncate terms that are too long to fit in the left column 
-*/
-.dl-horizontal dt {
-    white-space: normal;
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -.011em;
+    color: var(--text);
 }
 
-/* Set width on the form input elements since they're 100% wide by default */
-input,
-select,
-textarea {
-    max-width: 280px;
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.25rem; }
+h3 { font-size: 1.125rem; }
+h4, h5, h6 { font-size: 1rem; }
+
+a { text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+hr {
+    border-color: var(--border);
+    opacity: 1;
+}
+
+/* Encabezado de pagina: titulo a la izquierda, acciones a la derecha.
+   Se repite en Items, Activos, Ubicaciones y catalogos. */
+.page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+}
+
+.page-head h1,
+.page-head h2 {
+    margin: 0;
+}
+
+.page-head .subtitle {
+    margin: .15rem 0 0;
+    font-size: .875rem;
+    color: var(--muted);
+}
+
+
+/* ---------------------------------------------------------------------------
+   3. NAVBAR
+   ------------------------------------------------------------------------ */
+.navbar {
+    background-color: var(--surface) !important;
+    border-bottom: 1px solid var(--border);
+    padding-top: .5rem;
+    padding-bottom: .5rem;
+}
+
+.navbar .navbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    font-weight: 600;
+    font-size: 1rem;
+    letter-spacing: -.01em;
+    color: var(--text);
+}
+
+.navbar .navbar-brand:hover { text-decoration: none; }
+
+.navbar .navbar-brand svg {
+    color: var(--accent);
+}
+
+.navbar .nav-link {
+    color: var(--text-soft);
+    font-size: .9rem;
+    font-weight: 500;
+    padding: .4rem .7rem;
+    border-radius: var(--radius-sm);
+}
+
+.navbar .nav-link:hover {
+    color: var(--text);
+    background-color: var(--surface-alt);
+    text-decoration: none;
+}
+
+/* Seccion activa: se marca con la clase .active que pone _Layout comparando
+   el controller de la request actual. */
+.navbar .nav-link.active {
+    color: var(--accent);
+    background-color: var(--accent-soft);
+}
+
+.navbar-toggler {
+    border-color: var(--border);
+    padding: .35rem .55rem;
+}
+
+.navbar-toggler:focus { box-shadow: none; }
+
+/* Chip de usuario del extremo derecho */
+.user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .3rem .6rem .3rem .35rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: .875rem;
+    color: var(--text-soft);
+}
+
+.user-chip:hover {
+    background: var(--surface-alt);
+    text-decoration: none;
+    color: var(--text);
+}
+
+.user-chip::after { display: none; }   /* mata la flechita del dropdown-toggle */
+
+.avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-size: .75rem;
+    font-weight: 600;
+    flex: 0 0 26px;
+}
+
+.dropdown-menu {
+    border-color: var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: .35rem;
+    font-size: .9rem;
+}
+
+.dropdown-item {
+    border-radius: var(--radius-sm);
+    padding: .45rem .6rem;
+}
+
+.dropdown-item:active {
+    background-color: var(--accent);
+}
+
+.dropdown-header {
+    padding: .5rem .6rem .35rem;
+    font-size: .75rem;
+    color: var(--muted);
+}
+
+
+/* ---------------------------------------------------------------------------
+   4. CARDS
+   ------------------------------------------------------------------------ */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: none;              /* plano a proposito: el borde ya separa */
+}
+
+.card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--border);
+    padding: .85rem 1.1rem;
+    font-weight: 600;
+    font-size: .9375rem;
+}
+
+.card-body { padding: 1.1rem; }
+
+.card-title {
+    font-size: .9375rem;
+    font-weight: 600;
+    margin-bottom: .9rem;
+}
+
+/* Encabezado de card con accion a la derecha (los widgets del dashboard) */
+.card-header-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+}
+
+.card-header-flex .hint {
+    font-size: .75rem;
+    font-weight: 400;
+    color: var(--muted);
+}
+
+
+/* ---------------------------------------------------------------------------
+   5. TABLAS
+   ------------------------------------------------------------------------ */
+.table {
+    --bs-table-bg: transparent;
+    --bs-table-hover-bg: var(--surface-alt);
+    margin-bottom: 0;
+    color: var(--text);
+    border-color: var(--border);
+}
+
+.table > thead > tr > th {
+    border-bottom: 1px solid var(--border);
+    padding: .6rem .75rem;
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: transparent;
+    white-space: nowrap;
+}
+
+.table > tbody > tr > td {
+    padding: .7rem .75rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.table > tbody > tr:last-child > td {
+    border-bottom: 0;
+}
+
+/* La app usaba table-striped en varias vistas. Se neutraliza el rayado (mucho
+   ruido visual) pero se conservan las clases en el HTML para no tocar 12
+   archivos: el hover ya da suficiente feedback de fila. */
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+    --bs-table-accent-bg: transparent;
+    background-color: transparent;
+    box-shadow: none;
+    color: var(--text);
+}
+
+/* Celda que combina nombre + dato secundario debajo */
+.cell-main {
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+.cell-sub {
+    font-size: .78rem;
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+}
+
+/* --- DataTables (se carga por CDN en _Layout) --- */
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: .35rem .6rem;
+    font-size: .875rem;
+}
+
+.dataTables_wrapper .dataTables_filter input:focus,
+.dataTables_wrapper .dataTables_length select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter {
+    font-size: .8125rem;
+    color: var(--muted);
+}
+
+.dataTables_wrapper .pagination { margin-bottom: 0; }
+
+.page-link {
+    border-color: var(--border);
+    color: var(--text-soft);
+    font-size: .8125rem;
+}
+
+.page-item.active .page-link {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+
+/* ---------------------------------------------------------------------------
+   6. FORMULARIOS
+   ------------------------------------------------------------------------ */
+
+/*  Aca vivia el bug mas caro de la hoja vieja:
+
+        input, select, textarea { max-width: 280px; }
+
+    Le clavaba 280px de ancho maximo a TODOS los campos de la app, sin importar
+    la columna que los contuviera. Por eso los formularios se veian encogidos y
+    desalineados. Se elimino: el ancho lo decide la grilla (.col-*), que es
+    quien sabe cuanto espacio hay disponible. */
+
+.form-label {
+    font-size: .8125rem;
+    font-weight: 500;
+    color: var(--text-soft);
+    margin-bottom: .3rem;
+}
+
+.form-control,
+.form-select {
+    border-color: var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: .45rem .7rem;
+    font-size: .9rem;
+    color: var(--text);
+    background-color: var(--surface);
+}
+
+.form-control::placeholder { color: #9ca3af; }
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.form-control[readonly] {
+    background-color: var(--surface-alt);
+    color: var(--text-soft);
+}
+
+/* Texto de ayuda debajo del campo. Va SIEMPRE visible (a diferencia del
+   tooltip, que exige hover): el ejemplo concreto es lo que de verdad
+   desatasca a quien esta llenando el form por primera vez. */
+.form-text {
+    font-size: .75rem;
+    color: var(--muted);
+    margin-top: .25rem;
+}
+
+.form-text code {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: .05rem .25rem;
+    font-size: .72rem;
+    color: var(--text-soft);
+}
+
+/* Icono ⓘ que dispara el tooltip de Bootstrap */
+.hint-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    margin-left: .3rem;
+    border-radius: 999px;
+    background: var(--border);
+    color: var(--text-soft);
+    font-size: .65rem;
+    font-weight: 700;
+    font-style: normal;
+    cursor: help;
+    vertical-align: middle;
+}
+
+.hint-icon:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.tooltip-inner {
+    background-color: #1f2937;
+    border-radius: var(--radius-sm);
+    font-size: .78rem;
+    padding: .45rem .65rem;
+    text-align: left;
+    max-width: 260px;
+}
+
+.validation-summary-errors,
+.field-validation-error {
+    color: var(--danger);
+    font-size: .8125rem;
+}
+
+.validation-summary-errors ul {
+    margin: 0;
+    padding-left: 1.1rem;
+}
+
+
+/* ---------------------------------------------------------------------------
+   7. BOTONES Y BADGES
+   ------------------------------------------------------------------------ */
+.btn {
+    --bs-btn-border-radius: var(--radius-sm);
+    font-size: .875rem;
+    font-weight: 500;
+    padding: .45rem .9rem;
+    border-radius: var(--radius-sm);
+}
+
+.btn-sm {
+    font-size: .8125rem;
+    padding: .3rem .6rem;
+}
+
+.btn:focus-visible {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--accent);
+    --bs-btn-border-color: var(--accent);
+    --bs-btn-hover-bg: #1d4ed8;
+    --bs-btn-hover-border-color: #1d4ed8;
+    --bs-btn-active-bg: #1e40af;
+    --bs-btn-active-border-color: #1e40af;
+}
+
+/* Los outline de Bootstrap pintan el borde del color completo, lo que en una
+   fila con 5 botones se vuelve un semaforo. Se unifican a un boton neutro y
+   solo el texto conserva su color semantico. */
+.btn-outline-secondary,
+.btn-outline-dark,
+.btn-outline-info,
+.btn-outline-primary {
+    --bs-btn-color: var(--text-soft);
+    --bs-btn-border-color: var(--border-strong);
+    --bs-btn-hover-color: var(--text);
+    --bs-btn-hover-bg: var(--surface-alt);
+    --bs-btn-hover-border-color: var(--border-strong);
+    --bs-btn-active-color: var(--text);
+    --bs-btn-active-bg: var(--surface-alt);
+    --bs-btn-active-border-color: var(--border-strong);
+}
+
+.btn-outline-danger {
+    --bs-btn-color: var(--danger);
+    --bs-btn-border-color: var(--border-strong);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: var(--danger);
+    --bs-btn-hover-border-color: var(--danger);
+}
+
+.btn-secondary {
+    --bs-btn-color: var(--text-soft);
+    --bs-btn-bg: var(--surface);
+    --bs-btn-border-color: var(--border-strong);
+    --bs-btn-hover-color: var(--text);
+    --bs-btn-hover-bg: var(--surface-alt);
+    --bs-btn-hover-border-color: var(--border-strong);
+}
+
+/* Grupo de acciones de una fila de tabla */
+.row-actions {
+    display: flex;
+    gap: .3rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.row-actions form { display: inline; }
+
+/* --- Badges ---
+   Bootstrap los pinta de color solido y saturado. Eso funciona para UNO, pero
+   una tabla llena de badges solidos se vuelve ilegible. Aca van con fondo
+   tinte suave + texto oscuro del mismo tono: se distinguen igual y no gritan. */
+.badge {
+    font-weight: 500;
+    font-size: .75rem;
+    padding: .28rem .5rem;
+    border-radius: 6px;
+    border: 1px solid transparent;
+}
+
+.badge.bg-success {
+    background-color: var(--ok-soft) !important;
+    color: var(--ok);
+    border-color: #a7f3d0;
+}
+
+.badge.bg-danger {
+    background-color: var(--danger-soft) !important;
+    color: var(--danger);
+    border-color: #fecaca;
+}
+
+.badge.bg-warning {
+    background-color: var(--warn-soft) !important;
+    color: var(--warn) !important;
+    border-color: #fde68a;
+}
+
+.badge.bg-secondary {
+    background-color: var(--surface-alt) !important;
+    color: var(--text-soft);
+    border-color: var(--border);
+}
+
+.badge.bg-primary {
+    background-color: var(--accent-soft) !important;
+    color: var(--accent);
+    border-color: var(--accent-border);
+}
+
+/* Badge de codigo (SKU): monoespaciado para que los caracteres se alineen */
+.badge-codigo {
+    font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    color: var(--text-soft);
+    padding: .2rem .45rem;
+    border-radius: 6px;
+    font-size: .78rem;
+}
+
+/* --- Alertas --- */
+.alert {
+    border-radius: var(--radius);
+    border-width: 1px;
+    font-size: .875rem;
+    padding: .75rem 1rem;
+}
+
+.alert-success {
+    background-color: var(--ok-soft);
+    border-color: #a7f3d0;
+    color: #065f46;
+}
+
+.alert-danger {
+    background-color: var(--danger-soft);
+    border-color: #fecaca;
+    color: #991b1b;
+}
+
+
+/* ---------------------------------------------------------------------------
+   8. MODALES
+   ------------------------------------------------------------------------ */
+.modal-content {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 1.25rem;
+}
+
+.modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.modal-body { padding: 1.25rem; }
+
+.modal-footer {
+    border-top: 1px solid var(--border);
+    padding: .85rem 1.25rem;
+    background: var(--surface-alt);
+    border-bottom-left-radius: var(--radius);
+    border-bottom-right-radius: var(--radius);
+}
+
+.modal-backdrop.show { opacity: .35; }
+
+
+/* ---------------------------------------------------------------------------
+   9. DASHBOARD
+   ------------------------------------------------------------------------ */
+
+/* --- Barra de escaneo --- */
+.scan-bar {
+    position: relative;
+    margin-bottom: 1.25rem;
+}
+
+.scan-bar input {
+    padding: .7rem 1rem .7rem 2.6rem;
+    font-size: .95rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    width: 100%;
+}
+
+.scan-bar input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.scan-bar .scan-icon {
+    position: absolute;
+    left: .9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+    display: flex;
+}
+
+.scan-bar .scan-msg {
+    margin-top: .4rem;
+    font-size: .8125rem;
+    min-height: 1.1rem;
+}
+
+.scan-bar .scan-msg.error { color: var(--danger); }
+.scan-bar .scan-msg.ok    { color: var(--ok); }
+
+/* --- Fila de KPIs --- */
+.kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    height: 100%;
+}
+
+.kpi .kpi-label {
+    font-size: .75rem;
+    font-weight: 500;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: .35rem;
+}
+
+.kpi .kpi-value {
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;   /* los digitos no bailan al cambiar */
+}
+
+.kpi .kpi-foot {
+    font-size: .75rem;
+    color: var(--muted);
+    margin-top: .3rem;
+}
+
+.kpi.is-danger  .kpi-value { color: var(--danger); }
+.kpi.is-warning .kpi-value { color: var(--warn); }
+
+/* --- Barra de proporcion (top movidos) ---
+   Dos segmentos, entradas y salidas, dentro de un riel gris. El ancho se
+   calcula en la vista y se manda por style inline, porque depende del dato. */
+.bar {
+    display: flex;
+    height: 6px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--surface-alt);
+    margin-top: .35rem;
+}
+
+.bar .seg-in  { background: var(--ok); }
+.bar .seg-out { background: var(--accent); }
+
+.bar-legend {
+    display: flex;
+    gap: .9rem;
+    font-size: .72rem;
+    color: var(--muted);
+    margin-top: .3rem;
+}
+
+.bar-legend .dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    margin-right: .3rem;
+    vertical-align: middle;
+}
+
+.bar-legend .dot-in  { background: var(--ok); }
+.bar-legend .dot-out { background: var(--accent); }
+
+/* --- Barra segmentada ABC --- */
+.abc-bar {
+    display: flex;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.abc-bar > div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    transition: none;
+}
+
+.abc-a { background: var(--accent); }
+.abc-b { background: #93c5fd; color: #1e3a8a; }
+.abc-c { background: #e5e7eb; color: var(--text-soft); }
+
+.clase-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    font-size: .7rem;
+    font-weight: 700;
+}
+
+.clase-tag.a { background: var(--accent); color: #fff; }
+.clase-tag.b { background: #dbeafe; color: #1e40af; }
+.clase-tag.c { background: var(--surface-alt); color: var(--muted); }
+
+/* --- Feed de bitacora --- */
+.feed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.feed li {
+    display: flex;
+    gap: .7rem;
+    padding: .7rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.feed li:last-child { border-bottom: 0; }
+.feed li:first-child { padding-top: 0; }
+
+.feed .feed-body { min-width: 0; flex: 1; }
+
+.feed .feed-text {
+    font-size: .85rem;
+    line-height: 1.4;
+    margin: 0;
+}
+
+.feed .feed-meta {
+    font-size: .75rem;
+    color: var(--muted);
+    margin-top: .1rem;
+}
+
+.feed .feed-detalle {
+    font-size: .78rem;
+    color: var(--muted);
+    margin-top: .15rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Punto de accion del feed: color segun ALTA / MODIFICACION / BAJA */
+.feed .avatar.accion-alta         { background: var(--ok); }
+.feed .avatar.accion-modificacion { background: var(--accent); }
+.feed .avatar.accion-baja         { background: var(--danger); }
+
+/* --- Estado vacio ---
+   Un widget sin datos tiene que decir POR QUE esta vacio. Una tabla en blanco
+   se lee como un error de la app. */
+.empty {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--muted);
+    font-size: .875rem;
+}
+
+.empty svg {
+    color: var(--border-strong);
+    margin-bottom: .6rem;
+}
+
+
+/* ---------------------------------------------------------------------------
+   10. FORMULARIO DE ITEM (tarjeta de dos columnas)
+   ------------------------------------------------------------------------ */
+
+/* Zona de imagen: cuadrada, para que el layout no salte segun la foto que
+   se suba (una foto apaisada y una vertical ocupan el mismo hueco). */
+.img-drop {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--surface-alt);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .15s, background-color .15s;
+}
+
+.img-drop:hover,
+.img-drop.dragover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.img-drop img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.img-drop .img-placeholder {
+    text-align: center;
+    color: var(--muted);
+    font-size: .8125rem;
+    padding: 1rem;
+    pointer-events: none;
+}
+
+.img-drop .img-placeholder svg {
+    color: var(--border-strong);
+    margin-bottom: .5rem;
+}
+
+/* El <input type=file> real se oculta y el click lo dispara la zona de arriba:
+   un input de archivo nativo no se puede estilizar de forma confiable entre
+   navegadores. */
+.img-drop input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.img-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: .5rem;
+    margin-top: .5rem;
+    font-size: .75rem;
+    color: var(--muted);
+}
+
+/* Franja inferior con los codigos generados */
+.codigo-strip {
+    border-top: 1px solid var(--border);
+    background: var(--surface-alt);
+    padding: 1rem 1.25rem;
+    margin: 1.25rem -1.25rem -1.25rem;
+}
+
+.codigo-strip .codigo-title {
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: .5rem;
+}
+
+.codigo-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: .75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 96px;
+}
+
+.codigo-box svg,
+.codigo-box img,
+.codigo-box canvas {
+    max-width: 100%;
+    height: auto;
+}
+
+.codigo-box .placeholder-txt {
+    font-size: .78rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+
+/* ---------------------------------------------------------------------------
+   11. UTILIDADES
+   ------------------------------------------------------------------------ */
+.text-muted-sm {
+    font-size: .8125rem;
+    color: var(--muted);
+}
+
+.mono {
+    font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+}
+
+.num {
+    font-variant-numeric: tabular-nums;
+}
+
+footer {
+    color: var(--muted);
+    font-size: .8125rem;
+}
+
+
+/* ---------------------------------------------------------------------------
+   12. RESPONSIVE
+   ------------------------------------------------------------------------ */
+@media (max-width: 575.98px) {
+    .body-content { margin-top: 1rem; }
+
+    .kpi { padding: .8rem .9rem; }
+    .kpi .kpi-value { font-size: 1.4rem; }
+
+    .row-actions { justify-content: flex-start; }
+
+    /* La franja de codigos vuelve al ancho del modal en movil */
+    .codigo-strip { margin-left: -1rem; margin-right: -1rem; }
 }

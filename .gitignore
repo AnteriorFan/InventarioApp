@@ -364,3 +364,9 @@ FodyWeavers.xsd
 
 *NOTAS-APRENDIZAJE
 ConnectionStrings.config
+ROADMAO-FUTURO.md
+
+Content/uploads/*
+!Content/uploads/.gitkeep
+/InventarioApp/Content/uploads
+*.bak

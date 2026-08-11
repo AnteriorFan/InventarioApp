@@ -1,40 +1,176 @@
-﻿<!DOCTYPE html>
-<html>
+@{
+    // Controller de la request actual. Sirve para marcar la seccion activa del
+    // navbar: es dato de routing, no hay que pasarlo desde cada Controller.
+    var controladorActual = ViewContext.RouteData.Values["controller"] as string ?? "";
+
+    // Recibe los controllers de la seccion separados por "|" y devuelve la clase
+    // del <a>. Los pipes de los extremos evitan falsos positivos: sin ellos,
+    // "Items" haria match dentro de "TiposMovimiento".
+    Func<string, string> activo = seccion =>
+        ("|" + seccion + "|").IndexOf("|" + controladorActual + "|", StringComparison.OrdinalIgnoreCase) >= 0
+            ? "nav-link active"
+            : "nav-link";
+
+    var nombreUsuario = Request.IsAuthenticated ? User.Identity.Name : "";
+    var inicial = string.IsNullOrEmpty(nombreUsuario) ? "?" : nombreUsuario.Substring(0, 1).ToUpper();
+}
+<!DOCTYPE html>
+<html lang="es">
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@ViewBag.Title - Mi aplicación ASP.NET</title>
+    <title>@ViewBag.Title &middot; Inventario</title>
     @Styles.Render("~/Content/css")
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" />
     @Scripts.Render("~/bundles/modernizr")
 </head>
 <body>
-    <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg">
         <div class="container">
-            @Html.ActionLink("Nombre de la aplicación", "Index", "Home", new { area = "" }, new { @class = "navbar-brand" })
-            <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" title="Alternar navegación" aria-controls="navbarSupportedContent"
-                    aria-expanded="false" aria-label="Toggle navigation">
+            <a class="navbar-brand" href="@Url.Action("Index", "Home")">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                    <line x1="12" y1="22.08" x2="12" y2="12" />
+                </svg>
+                Inventario
+            </a>
+
+            <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navPrincipal"
+                    aria-controls="navPrincipal" aria-expanded="false" aria-label="Alternar navegación">
                 <span class="navbar-toggler-icon"></span>
             </button>
-            <div class="collapse navbar-collapse d-sm-inline-flex justify-content-between">
-                <ul class="navbar-nav flex-grow-1">
-                    <li>@Html.ActionLink("Inicio", "Index", "Home", new { area = "" }, new { @class = "nav-link" })</li>
-                    <li>@Html.ActionLink("Acerca de", "About", "Home", new { area = "" }, new { @class = "nav-link" })</li>
-                    <li>@Html.ActionLink("Contacto", "Contact", "Home", new { area = "" }, new { @class = "nav-link" })</li>
+
+            <div class="collapse navbar-collapse" id="navPrincipal">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="@activo("Home")" href="@Url.Action("Index", "Home")">Inicio</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="@activo("Items|Movimientos")" href="@Url.Action("Index", "Items")">Items</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="@activo("Activos")" href="@Url.Action("Index", "Activos")">Activos</a>
+                    </li>
+
+                    <li class="nav-item dropdown">
+                        <a class="@activo("Edificios|Areas|Espacios") dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Ubicaciones</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="@Url.Action("Index", "Edificios")">Edificios</a></li>
+                            <li><a class="dropdown-item" href="@Url.Action("Index", "Areas")">Áreas</a></li>
+                            <li><a class="dropdown-item" href="@Url.Action("Index", "Espacios")">Espacios</a></li>
+                        </ul>
+                    </li>
+
+                    <li class="nav-item dropdown">
+                        <a class="@activo("Marcas|Modelos|Estados|TiposMovimiento") dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Catálogos</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="@Url.Action("Index", "Marcas")">Marcas</a></li>
+                            <li><a class="dropdown-item" href="@Url.Action("Index", "Modelos")">Modelos</a></li>
+                            <li><a class="dropdown-item" href="@Url.Action("Index", "Estados")">Estados</a></li>
+                            <li><a class="dropdown-item" href="@Url.Action("Index", "TiposMovimiento")">Tipos de movimiento</a></li>
+                        </ul>
+                    </li>
+                </ul>
+
+                <ul class="navbar-nav">
+                    @if (Request.IsAuthenticated)
+                    {
+                        <li class="nav-item dropdown">
+                            <a class="user-chip dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <span class="avatar">@inicial</span>
+                                <span>@nombreUsuario</span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li class="dropdown-header">Sesión iniciada como <strong>@nombreUsuario</strong></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="@Url.Action("Escanear", "Items")">Escanear código</a></li>
+                                <li><a class="dropdown-item" href="@Url.Action("Logout", "Account")">Cerrar sesión</a></li>
+                            </ul>
+                        </li>
+                    }
+                    else
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" href="@Url.Action("Login", "Account")">Iniciar sesión</a>
+                        </li>
+                    }
                 </ul>
             </div>
         </div>
     </nav>
+
     <div class="container body-content">
+        @*  Un solo contenedor de avisos para toda la app.
+
+            Antes habia dos caminos distintos: TempData["Error"] se pintaba aca
+            y el mensaje de exito se armaba con HTML duplicado dentro del JS de
+            Items/Index. Ahora los dos terminan en el mismo lugar, y el JS solo
+            llama a mostrarFlash(). *@
+        <div id="flashContainer">
+            @if (TempData["Error"] != null)
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    @TempData["Error"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+                </div>
+            }
+            @if (TempData["Exito"] != null)
+            {
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    @TempData["Exito"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+                </div>
+            }
+        </div>
+
         @RenderBody()
-        <hr />
-        <footer>
-            <p>&copy; @DateTime.Now.Year - Mi aplicación ASP.NET</p>
+
+        <footer class="mt-5 pt-3 border-top">
+            <p class="mb-0">&copy; @DateTime.Now.Year &middot; Sistema de inventario</p>
         </footer>
     </div>
 
     @Scripts.Render("~/bundles/jquery")
     @Scripts.Render("~/bundles/bootstrap")
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+    <script>
+        // Helpers globales, disponibles en cualquier vista.
+
+        // Pinta un aviso arriba del contenido.
+        function mostrarFlash(mensaje, tipo) {
+            var clase = (tipo === 'error') ? 'alert-danger' : 'alert-success';
+            $('#flashContainer').html(
+                '<div class="alert ' + clase + ' alert-dismissible fade show" role="alert">' +
+                $('<div>').text(mensaje).html() +   // escapa el texto: nunca inyectar HTML sin filtrar
+                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>' +
+                '</div>'
+            );
+        }
+
+        // Un mensaje guardado antes de un location.reload() sobrevive en
+        // sessionStorage (una variable JS normal no: la recarga la borra).
+        function mostrarFlashPendiente() {
+            var msg = sessionStorage.getItem('flashMessage');
+            if (msg) {
+                mostrarFlash(msg, sessionStorage.getItem('flashTipo') || 'ok');
+                sessionStorage.removeItem('flashMessage');
+                sessionStorage.removeItem('flashTipo');
+            }
+        }
+
+        function guardarFlashPendiente(mensaje, tipo) {
+            sessionStorage.setItem('flashMessage', mensaje);
+            sessionStorage.setItem('flashTipo', tipo || 'ok');
+        }
+
+        $(function () { mostrarFlashPendiente(); });
+    </script>
+
     @RenderSection("scripts", required: false)
 </body>
 </html>
