@@ -1,0 +1,72 @@
+@model IEnumerable<InventarioApp.Models.Rol>
+
+@{
+    ViewBag.Title = "Roles";
+}
+
+<div class="page-head">
+    <div>
+        <h1>Roles</h1>
+        <p class="subtitle">@Model.Count() roles activos</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index", "Usuarios")" class="btn btn-outline-secondary">Usuarios</a>
+        <a href="@Url.Action("Create")" class="btn btn-primary">Nuevo rol</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        @if (!Model.Any())
+        {
+            <div class="empty">No hay roles definidos todavía.</div>
+        }
+        else
+        {
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Rol</th>
+                        <th class="text-end">Permisos</th>
+                        <th class="text-end">Usuarios</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rol in Model)
+                    {
+                        <tr>
+                            <td>
+                                <div class="cell-main">@rol.Nombre</div>
+                                <div class="cell-sub">@(string.IsNullOrEmpty(rol.Descripcion) ? "—" : rol.Descripcion)</div>
+                            </td>
+                            <td class="text-end num">
+                                @if (rol.NumPermisos == 0)
+                                {
+                                    <span class="badge bg-warning">sin permisos</span>
+                                }
+                                else
+                                {
+                                    @rol.NumPermisos
+                                }
+                            </td>
+                            <td class="text-end num">@rol.NumUsuarios</td>
+                            <td>
+                                <div class="row-actions">
+                                    <a href="@Url.Action("Permisos", new { id = rol.Id })" class="btn btn-sm btn-outline-primary">Permisos</a>
+                                    <a href="@Url.Action("Edit", new { id = rol.Id })" class="btn btn-sm btn-outline-secondary">Editar</a>
+                                    @using (Html.BeginForm("Delete", "Roles", FormMethod.Post, new { onsubmit = "return confirm('¿Eliminar este rol?');" }))
+                                    {
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@rol.Id" />
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>

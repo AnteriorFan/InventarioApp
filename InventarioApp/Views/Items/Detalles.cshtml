@@ -1,4 +1,4 @@
-@model InventarioApp.Models.DetalleItemViewModel
+﻿@model InventarioApp.Models.DetalleItemViewModel
 
 @{
     ViewBag.Title = Model.Item.Nombre;
@@ -147,6 +147,8 @@
     </div>
 
     @*  ----- Registrar movimiento ----- *@
+    @if (Html.TienePermiso("MOVIMIENTOS_REGISTRAR"))
+    {
     <div class="col-lg-4">
         <div class="card">
             <div class="card-header">Registrar movimiento</div>
@@ -178,6 +180,7 @@
             </div>
         </div>
     </div>
+    }
 </div>
 
 @section scripts {

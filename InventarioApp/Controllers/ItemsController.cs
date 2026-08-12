@@ -132,9 +132,16 @@ namespace InventarioApp.Controllers
             return Json(item, JsonRequestBehavior.AllowGet);
         }
 
+        //  El escáner se mudó a su propio controller cuando dejó de ser solo de
+        //  items (ahora también lee activos). Esta action se queda como
+        //  redirección para no romper enlaces guardados ni marcadores.
+        //
+        //  302 y no 301: un redirect permanente lo cachea el navegador y ya no
+        //  vuelve a preguntar, así que si mañana se decide otra cosa habría que
+        //  ir a limpiar la caché de cada equipo para poder probarlo.
         public ActionResult Escanear()
         {
-            return View();
+            return RedirectToAction("Index", "Escaner");
         }
 
 

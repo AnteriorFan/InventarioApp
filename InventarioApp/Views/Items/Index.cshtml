@@ -1,4 +1,4 @@
-@model IEnumerable<InventarioApp.Models.Item>
+﻿@model IEnumerable<InventarioApp.Models.Item>
 
 @{
     ViewBag.Title = "Items";
@@ -10,8 +10,11 @@
         <p class="subtitle">@Model.Count() items activos</p>
     </div>
     <div class="d-flex gap-2">
-        <a href="@Url.Action("Escanear")" class="btn btn-outline-secondary">Escanear código</a>
-        <button type="button" class="btn btn-primary open-modal-btn" data-url="@Url.Action("Create")">Nuevo item</button>
+        <a href="@Url.Action("Index", "Escaner")" class="btn btn-outline-secondary">Escanear código</a>
+        @if (Html.TienePermiso("ITEMS_CREAR"))
+        {
+            <button type="button" class="btn btn-primary open-modal-btn" data-url="@Url.Action("Create")">Nuevo item</button>
+        }
     </div>
 </div>
 
@@ -57,14 +60,26 @@
                         <td>
                             <div class="row-actions">
                                 <a href="@Url.Action("Detalles", new { id = item.Id })" class="btn btn-sm btn-outline-secondary">Detalles</a>
-                                <button type="button" class="btn btn-sm btn-outline-secondary open-modal-btn" data-url="@Url.Action("Edit", new { id = item.Id })">Editar</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary open-modal-btn" data-url="@Url.Action("Historial", new { id = item.Id })">Historial</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary ver-codigo-btn" data-codigo="@item.Codigo" data-nombre="@item.Nombre">Código</button>
-                                @using (Html.BeginForm("Delete", "Items", FormMethod.Post, new { onsubmit = "return confirm('¿Seguro que quieres eliminar este item?');" }))
+
+                                @if (Html.TienePermiso("ITEMS_EDITAR"))
                                 {
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="id" value="@item.Id" />
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary open-modal-btn" data-url="@Url.Action("Edit", new { id = item.Id })">Editar</button>
+                                }
+                                @if (Html.TienePermiso("HISTORIAL_VER"))
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary open-modal-btn" data-url="@Url.Action("Historial", new { id = item.Id })">Historial</button>
+                                }
+
+                                <button type="button" class="btn btn-sm btn-outline-secondary ver-codigo-btn" data-codigo="@item.Codigo" data-nombre="@item.Nombre">Código</button>
+
+                                @if (Html.TienePermiso("ITEMS_ELIMINAR"))
+                                {
+                                    using (Html.BeginForm("Delete", "Items", FormMethod.Post, new { onsubmit = "return confirm('¿Seguro que quieres eliminar este item?');" }))
+                                    {
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@item.Id" />
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                    }
                                 }
                             </div>
                         </td>

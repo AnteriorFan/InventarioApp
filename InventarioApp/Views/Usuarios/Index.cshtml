@@ -1,0 +1,83 @@
+@model IEnumerable<InventarioApp.Models.Usuario>
+
+@{
+    ViewBag.Title = "Usuarios";
+}
+
+<div class="page-head">
+    <div>
+        <h1>Usuarios</h1>
+        <p class="subtitle">@Model.Count() usuarios activos</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index", "Roles")" class="btn btn-outline-secondary">Roles</a>
+        <a href="@Url.Action("Create")" class="btn btn-primary">Nuevo usuario</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th style="width:16rem">Rol</th>
+                    <th>Excepciones</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var usuario in Model)
+                {
+                    <tr>
+                        <td>
+                            <div class="cell-main">@usuario.NombreCompleto</div>
+                            <div class="cell-sub mono">@usuario.UsuarioLogin</div>
+                        </td>
+                        <td>
+                            @*  Un form por fila: cambiar el rol es la acción más
+                                frecuente de esta pantalla y así se hace sin
+                                entrar a ningún lado. *@
+                            @using (Html.BeginForm("CambiarRol", "Usuarios", FormMethod.Post, new { @class = "d-flex gap-2" }))
+                            {
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@usuario.Id" />
+                                @Html.DropDownList("idRol",
+                                    new SelectList((List<InventarioApp.Models.Rol>)ViewBag.Roles, "Id", "Nombre", usuario.IdRol),
+                                    "— Sin rol —", new { @class = "form-select form-select-sm" })
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Aplicar</button>
+                            }
+                        </td>
+                        <td>
+                            @if (usuario.NumExcepciones == 0)
+                            {
+                                <span class="text-muted-sm">—</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning">@usuario.NumExcepciones excepción(es)</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="row-actions">
+                                <a href="@Url.Action("Permisos", new { id = usuario.Id })" class="btn btn-sm btn-outline-primary">Permisos</a>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-body">
+        <p class="text-muted-sm mb-0">
+            El <strong>rol</strong> define lo que puede hacer una persona por defecto.
+            Las <strong>excepciones</strong> son ajustes sobre esa base para alguien en
+            concreto: darle algo que su rol no trae, o quitarle algo que sí trae.
+            Si necesitas el mismo ajuste en varias personas, conviene crear un rol nuevo
+            en vez de repetir la excepción.
+        </p>
+    </div>
+</div>

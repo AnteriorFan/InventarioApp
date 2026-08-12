@@ -1,0 +1,116 @@
+@model InventarioApp.Models.UsuarioPermisosViewModel
+@using InventarioApp.Models
+
+@{
+    ViewBag.Title = "Permisos de " + Model.Usuario.NombreCompleto;
+
+    var grupos = Model.Permisos.GroupBy(p => p.Modulo).OrderBy(g => g.Key).ToList();
+    int efectivos = Model.Permisos.Count(p => p.Efectivo);
+    int excepciones = Model.Permisos.Count(p => p.Estado != PermisoDeUsuario.EstadoHereda);
+}
+
+<div class="page-head">
+    <div>
+        <h1>@Model.Usuario.NombreCompleto</h1>
+        <p class="subtitle">
+            <span class="badge-codigo">@Model.Usuario.UsuarioLogin</span>
+            <span class="ms-2">
+                Rol: <strong>@(string.IsNullOrEmpty(Model.Usuario.NombreRol) ? "sin rol" : Model.Usuario.NombreRol)</strong>
+            </span>
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Volver a usuarios</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-sm-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="kpi-label">Permisos efectivos</div>
+                <div class="kpi-value">@efectivos <span class="fs-6 fw-normal text-muted">de @Model.Permisos.Count</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-8">
+        <div class="card">
+            <div class="card-body">
+                <div class="kpi-label">Excepciones individuales</div>
+                <div class="kpi-value">@excepciones</div>
+                <div class="form-text mb-0">
+                    Todo lo que dejes en <strong>Hereda</strong> sigue al rol: si mañana le cambias los
+                    permisos a <strong>@(string.IsNullOrEmpty(Model.Usuario.NombreRol) ? "su rol" : Model.Usuario.NombreRol)</strong>,
+                    esta persona los cambia también. Lo que marques como Conceder o Negar queda fijo y
+                    ya no sigue al rol.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@using (Html.BeginForm("Permisos", "Usuarios", FormMethod.Post))
+{
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" value="@Model.Usuario.Id" />
+
+    <div class="card mb-3">
+        <div class="card-header">Excepciones por permiso</div>
+        <div class="card-body">
+            @foreach (var grupo in grupos)
+            {
+                <div class="codigo-title mb-2">@grupo.Key</div>
+                <table class="table table-sm align-middle mb-4">
+                    <thead>
+                        <tr>
+                            <th>Permiso</th>
+                            <th style="width:7rem" class="text-center">Su rol</th>
+                            <th style="width:22rem">Excepción</th>
+                            <th style="width:7rem" class="text-center">Resultado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var permiso in grupo.OrderBy(p => p.Nombre))
+                        {
+                            <tr>
+                                <td>
+                                    <div class="cell-main mono">@permiso.Accion</div>
+                                    <div class="cell-sub">@permiso.Descripcion</div>
+                                </td>
+                                <td class="text-center">
+                                    @Html.Partial("_MarcaSiNo", permiso.VieneDelRol)
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm w-100" role="group">
+                                        <input type="radio" class="btn-check" name="permiso_@permiso.Id"
+                                               id="h@(permiso.Id)" value="@PermisoDeUsuario.EstadoHereda"
+                                               checked="@(permiso.Estado == PermisoDeUsuario.EstadoHereda)" />
+                                        <label class="btn btn-outline-secondary" for="h@(permiso.Id)">Hereda</label>
+
+                                        <input type="radio" class="btn-check" name="permiso_@permiso.Id"
+                                               id="c@(permiso.Id)" value="@PermisoDeUsuario.EstadoConceder"
+                                               checked="@(permiso.Estado == PermisoDeUsuario.EstadoConceder)" />
+                                        <label class="btn btn-outline-success" for="c@(permiso.Id)">Conceder</label>
+
+                                        <input type="radio" class="btn-check" name="permiso_@permiso.Id"
+                                               id="n@(permiso.Id)" value="@PermisoDeUsuario.EstadoNegar"
+                                               checked="@(permiso.Estado == PermisoDeUsuario.EstadoNegar)" />
+                                        <label class="btn btn-outline-danger" for="n@(permiso.Id)">Negar</label>
+                                    </div>
+                                </td>
+                                <td class="text-center">
+                                    @Html.Partial("_MarcaSiNo", permiso.Efectivo)
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Guardar excepciones</button>
+        <a href="@Url.Action("Index")" class="btn btn-secondary">Cancelar</a>
+    </div>
+}

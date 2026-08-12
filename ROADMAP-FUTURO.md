@@ -43,6 +43,82 @@ Espacios
 3. ✅ Activos (paralelo a Items, sin migración)
 4. ⬜ Historial de movimientos enriquecido (de Activos)
 5. ⬜ Galería de imágenes (Activos_Imagenes)
+6. ⬜ Revisión de área (toma de inventario físico) — diseño en [DISENO-REVISION-AREA.md](DISENO-REVISION-AREA.md)
+
+> **La FASE 4 va antes que la 6.** La revisión de área no reemplaza el historial de movimientos: lo *alimenta*. Al aplicar una revisión hay que escribir los traslados y cambios de estado que se detectaron, y si `movimientos_activos` no existe todavía, los activos quedan modificados sin rastro de por qué. Además es en la FASE 4 donde `tipos_movimiento` deja de ser catálogo muerto (el sketch ya tiene `id_tipo_movimiento` como FK).
+
+---
+
+## ✅ UI de Activos a la par de Items
+
+`Views/Activos/` pasó del Bootstrap pelado al design system de `Site.css`: `page-head`, `card`, `cell-main`/`cell-sub`, DataTable con buscador y paginación. Create/Edit se convirtieron en modales AJAX con el mismo patrón de Items (`open-modal-btn` + `Request.IsAjaxRequest()` + `Layout = null`), compartiendo un partial nuevo `_ActivoFormCard.cshtml` con tooltips que aclaran las dos ubicaciones (origen = de dónde vino y no cambia; actual = dónde está hoy). Se agregó `Detalles.cshtml` + su action.
+
+Diferencia con Items: el submit de Activos usa `form.serialize()` y no `FormData`, porque acá no hay subida de imagen (eso llega en la FASE 5).
+
+**Deuda conocida**: el JS del preview de código de barras/QR quedó duplicado entre `_ItemFormCard` y `_ActivoFormCard`, igual que el JS del submit por modal entre los dos `Index.cshtml`. Va a `Scripts/Site.js` como dos funciones (`initPreviewCodigos()`, `initModalCrud()`).
+
+---
+
+## ✅ Pantallas de administración de Roles y Usuarios
+
+El sistema de permisos ya existía en la base pero **no tenía interfaz**: los roles y sus permisos solo se podían tocar con `INSERT` a mano. Ahora:
+
+- **`/Roles`** — listado con cuántos permisos y cuántos usuarios tiene cada rol, alta/edición, y una **matriz de permisos** agrupada por módulo (el prefijo del nombre: `ITEMS_`, `ACTIVOS_`…) con "marcar/desmarcar todo".
+- **`/Usuarios`** — listado con el rol resuelto, cambio de rol en línea (un `<form>` por fila), y una **matriz de excepciones** con tres estados por permiso: *Hereda* / *Conceder* / *Negar*, mostrando en columnas separadas qué le da su rol y cuál es el resultado final.
+- Navbar: sección "Administración", visible solo con `SEGURIDAD_ADMINISTRAR` vía un helper nuevo `@Html.TienePermiso()`.
+
+**SQL**: `seguridad_admin.sql` (correr completo). Agrega el permiso `SEGURIDAD_ADMINISTRAR` y extiende `pkg_roles`, `pkg_permisos` y `pkg_usuarios`.
+
+---
+
+## ✅ Escáner unificado (items + activos)
+
+El escáner vivía en `/Items/Escanear` y solo consultaba items: escanear el QR de un activo respondía *"no se encontró ningún item con ese código"*, aunque el activo existiera.
+
+Se movió a **`EscanerController`** (`/Escaner`) porque dejó de pertenecer a Items: quien escanea no sabe —ni tiene por qué— si lo que tiene enfrente está guardado como item o como activo. `Items/Escanear` quedó como redirección 302 para no romper enlaces guardados.
+
+- Un solo endpoint `Escaner/Buscar` prueba items y luego activos, y devuelve un **`ResultadoEscaneo`** unificado (tipo, nombre, código, badge de estado, y una lista de etiqueta/valor). El JavaScript tiene **una sola** rutina de pintado en vez de una por tipo.
+- Los activos solo se consultan si el usuario tiene `ACTIVOS_VER` — se comprueba **antes** de ir a la base, no después.
+- Lista de "escaneados ahora" en memoria, para no perder la cuenta al recorrer. Un código repetido sube al principio en lugar de duplicarse.
+- Cámara arreglada: una sola instancia con encender/apagar. Antes creaba un lector nuevo en cada clic y lo detenía tras el primer código, así que al segundo clic quedaban dos peleándose por la cámara. Ahora se queda encendida para escanear varias cosas seguidas.
+
+**No hizo falta SQL**: `pkg_activos.sp_buscar_por_codigo` y `ActivoService.ObtenerPorCodigo` ya existían de la FASE 3.
+
+> Pendiente de limpieza: `Views/Items/Escanear.cshtml` quedó sin uso (la action redirige y ya no lo renderiza). `ItemsController.BuscarPorCodigo` también quedó sin consumidor, pero se conserva como endpoint JSON.
+
+---
+
+## ✅ Permisos aplicados en la interfaz + alta de usuarios
+
+Antes de esto los permisos solo se aplicaban en el Controller: un EMPLEADO veía **todos** los botones y menús, y al hacer clic era **mandado a la pantalla de login** — parecía que se le había caído la sesión.
+
+- **`HandleUnauthorizedRequest`** sobreescrito en `AuthorizePermisoAttribute`: si el usuario ya está autenticado devuelve **403 + vista `NoAutorizado`**; si no lo está, se conserva el 401→login de siempre.
+- **`@Html.TienePermiso()`** aplicado en el navbar (Activos / Ubicaciones / Catálogos), en Items e Activos (Nuevo / Editar / Eliminar / Historial), en el formulario de movimientos de `Items/Detalles`, y en los 7 índices de catálogos.
+- **`PermisosDelRequest`**: el caché por petición ahora lo comparten el atributo y las vistas, así que los permisos se resuelven **una sola vez por página** en vez de 2 consultas por cada pregunta.
+- **Alta de usuarios** (`/Usuarios/Create`) con `pkg_usuarios.sp_registrar`, protegida por `SEGURIDAD_ADMINISTRAR`. **SQL**: `alta_usuarios.sql`.
+- **`Helpers/ErrorOracle.cs`**: la traducción de errores de Oracle salió de `RolesController` para que `UsuariosController` la reuse en vez de duplicarla.
+
+### Lo que se aprendió aquí
+
+| Concepto | Detalle |
+|---|---|
+| 401 vs 403 | `AuthorizeAttribute` contesta 401 en los dos casos, y Forms Authentication convierte **cualquier** 401 en redirección al login. Pero "no sé quién eres" (401) y "sé quién eres y no puedes" (403) son cosas distintas; con 403 nadie redirige. Hace falta `TrySkipIisCustomErrors = true` o IIS se queda con la respuesta. |
+| `using` dentro de `@if` en Razor | Dentro de un bloque de código ya se está en contexto C#: se escribe `using (Html.BeginForm(...))` **sin** la `@`. Ponerla ahí es error de compilación. |
+| DataAnnotations vs validar a mano | `[Required]`, `[StringLength]`, `[Compare]`, `[RegularExpression]` dejan la regla pegada al campo; `ModelState.IsValid` las aplica todas juntas y `@Html.ValidationMessageFor` pinta cada mensaje en su lugar. `[Compare]` no compara contra la base: compara dos propiedades del mismo modelo. |
+| Dónde va el hasheo | En el **Service**, no en el Controller (sería lógica de negocio en la capa de HTTP) ni en el Repository (la contraseña en claro cruzaría toda la capa de datos para nada). El procedure recibe el hash ya hecho y nunca ve la contraseña real. |
+| No preguntar antes de insertar | Comprobar "¿ya existe este login?" y luego insertar tiene una condición de carrera: entre las dos cosas alguien más puede tomarlo. Se deja que decida el `UNIQUE` de la base y se traduce el ORA-00001. |
+
+| Concepto | Detalle |
+|---|---|
+| Tres estados, no un checkbox | *Hereda* y *Conceder* se ven iguales hoy pero no son lo mismo: si mañana le quitas el permiso al rol, el que estaba en Hereda lo pierde y el que estaba en Conceder lo conserva. Por eso la ausencia de fila en `usuario_permisos` **es** un dato, no un vacío. |
+| Guardar una matriz en UNA llamada | En vez de `DELETE` + N `INSERT` desde C#, los ids viajan como texto (`"3,7,11"`) y el procedure los parte con el modismo `CONNECT BY REGEXP_SUBSTR(csv,'[^,]+',1,LEVEL)`. Un solo viaje a la base, y sobre todo **atómico**: con N llamadas sueltas te puedes quedar con el rol a medio guardar. |
+| Oracle no tiene `BOOLEAN` en SQL | Los flags salen del cursor como `'S'`/`'N'` (misma convención que las columnas `activo`) y se convierten a `bool` en una propiedad calculada del Model. Un `NUMBER` 1/0 hacia `bool` se mapea mal. |
+| Dos actions con la misma firma | `Permisos(int id)` GET y POST **no compilan** juntas: los atributos de MVC no son parte de la firma de C#. Se resuelve con un nombre de método distinto + `[ActionName("Permisos")]` para que la URL siga igual. |
+| Permiso nuevo ≠ permiso repartido | El seed le dio a `JEFE` "todo el catálogo" con un `INSERT ... SELECT` sin filtro, pero eso fue **una foto**, no una regla viva: cada permiso nuevo hay que asignárselo explícitamente o te quedas fuera de tu propia pantalla. |
+| Traducir errores de Oracle | `RAISE_APPLICATION_ERROR` (rango ORA-20000..20999) trae mensajes escritos para el usuario, pero ODP.NET los envuelve y hay que recorrer los `InnerException`. Lo que **no** sea de ese rango se reemplaza por un texto genérico: un stack de Oracle no le sirve al usuario y sí a un atacante. |
+| Esconder ≠ proteger | `@Html.TienePermiso()` solo evita ofrecer un menú que llevaría a "No autorizado". La seguridad real sigue siendo `[AuthorizePermiso]` en el Controller: una URL se escribe a mano. |
+| Caché por request | `HttpContext.Items` se vacía al terminar cada petición. Sin ese caché, un navbar que pregunta por 4 permisos haría 8 consultas por página (usuario + permisos, por pregunta). |
+| Validar las vistas Razor | Compilan en **runtime**, así que un build normal no las revisa. `MSBuild -p:MvcBuildViews=true` las precompila y saca los errores antes de abrir el navegador. |
 
 ---
 

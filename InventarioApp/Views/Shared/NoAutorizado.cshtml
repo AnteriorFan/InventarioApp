@@ -1,0 +1,39 @@
+@{
+    ViewBag.Title = "Sin permiso";
+    string permiso = ViewBag.PermisoRequerido as string;
+}
+
+<div class="page-head">
+    <div>
+        <h1>No tienes permiso para esto</h1>
+        <p class="subtitle">Tu sesión sigue abierta — solo es que esta sección no te toca.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index", "Home")" class="btn btn-primary">Ir al inicio</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-body">
+                <p>
+                    Estás dentro como <strong>@User.Identity.Name</strong>, pero tu rol no incluye
+                    lo que hace falta para entrar aquí.
+                </p>
+
+                @if (!string.IsNullOrEmpty(permiso))
+                {
+                    <p class="mb-3">
+                        Permiso necesario: <span class="badge-codigo mono">@permiso</span>
+                    </p>
+                }
+
+                <p class="text-muted-sm mb-0">
+                    Si crees que sí deberías poder, pídele a quien administra el sistema que
+                    te lo asigne — puede dártelo a ti en particular sin cambiarte de rol.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,4 +1,4 @@
-@{
+﻿@{
     // Controller de la request actual. Sirve para marcar la seccion activa del
     // navbar: es dato de routing, no hay que pasarlo desde cada Controller.
     var controladorActual = ViewContext.RouteData.Values["controller"] as string ?? "";
@@ -46,31 +46,64 @@
                     <li class="nav-item">
                         <a class="@activo("Home")" href="@Url.Action("Index", "Home")">Inicio</a>
                     </li>
+                    @*  Cada seccion se pinta solo si el usuario tiene el permiso
+                        de VER correspondiente. Un EMPLEADO ya no ve menus que
+                        lo unico que hacen es mandarlo a "No autorizado".
+
+                        Esto NO es la seguridad: la seguridad es el
+                        [AuthorizePermiso] del Controller. Aca solo se deja de
+                        ofrecer lo que de todos modos no va a poder abrir. *@
                     <li class="nav-item">
                         <a class="@activo("Items|Movimientos")" href="@Url.Action("Index", "Items")">Items</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="@activo("Activos")" href="@Url.Action("Index", "Activos")">Activos</a>
-                    </li>
 
-                    <li class="nav-item dropdown">
-                        <a class="@activo("Edificios|Areas|Espacios") dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Ubicaciones</a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="@Url.Action("Index", "Edificios")">Edificios</a></li>
-                            <li><a class="dropdown-item" href="@Url.Action("Index", "Areas")">Áreas</a></li>
-                            <li><a class="dropdown-item" href="@Url.Action("Index", "Espacios")">Espacios</a></li>
-                        </ul>
-                    </li>
+                    @if (Html.TienePermiso("ACTIVOS_VER"))
+                    {
+                        <li class="nav-item">
+                            <a class="@activo("Activos")" href="@Url.Action("Index", "Activos")">Activos</a>
+                        </li>
+                    }
 
-                    <li class="nav-item dropdown">
-                        <a class="@activo("Marcas|Modelos|Estados|TiposMovimiento") dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Catálogos</a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="@Url.Action("Index", "Marcas")">Marcas</a></li>
-                            <li><a class="dropdown-item" href="@Url.Action("Index", "Modelos")">Modelos</a></li>
-                            <li><a class="dropdown-item" href="@Url.Action("Index", "Estados")">Estados</a></li>
-                            <li><a class="dropdown-item" href="@Url.Action("Index", "TiposMovimiento")">Tipos de movimiento</a></li>
-                        </ul>
-                    </li>
+                    @if (Html.TienePermiso("UBICACIONES_VER"))
+                    {
+                        <li class="nav-item dropdown">
+                            <a class="@activo("Edificios|Areas|Espacios") dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Ubicaciones</a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Edificios")">Edificios</a></li>
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Areas")">Áreas</a></li>
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Espacios")">Espacios</a></li>
+                            </ul>
+                        </li>
+                    }
+
+                    @if (Html.TienePermiso("CATALOGOS_VER"))
+                    {
+                        <li class="nav-item dropdown">
+                            <a class="@activo("Marcas|Modelos|Estados|TiposMovimiento") dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Catálogos</a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Marcas")">Marcas</a></li>
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Modelos")">Modelos</a></li>
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Estados")">Estados</a></li>
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "TiposMovimiento")">Tipos de movimiento</a></li>
+                            </ul>
+                        </li>
+                    }
+
+                    @*  Esta seccion solo se PINTA si el usuario tiene el permiso.
+                        No es la proteccion: la proteccion es el
+                        [AuthorizePermiso("SEGURIDAD_ADMINISTRAR")] de los dos
+                        Controllers. Esconderla aca solo evita ofrecerle a la
+                        gente un menu que le va a mandar a "No autorizado". *@
+                    @if (Html.TienePermiso("SEGURIDAD_ADMINISTRAR"))
+                    {
+                        <li class="nav-item dropdown">
+                            <a class="@activo("Roles|Usuarios") dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Administración</a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Usuarios")">Usuarios</a></li>
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Roles")">Roles y permisos</a></li>
+                            </ul>
+                        </li>
+                    }
                 </ul>
 
                 <ul class="navbar-nav">
@@ -84,7 +117,7 @@
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li class="dropdown-header">Sesión iniciada como <strong>@nombreUsuario</strong></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="@Url.Action("Escanear", "Items")">Escanear código</a></li>
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Escaner")">Escanear código</a></li>
                                 <li><a class="dropdown-item" href="@Url.Action("Logout", "Account")">Cerrar sesión</a></li>
                             </ul>
                         </li>

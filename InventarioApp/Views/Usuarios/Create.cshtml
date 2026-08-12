@@ -1,0 +1,105 @@
+@model InventarioApp.Models.CrearUsuarioViewModel
+
+@{
+    ViewBag.Title = "Nuevo usuario";
+}
+
+<div class="page-head">
+    <div>
+        <h1>Nuevo usuario</h1>
+        <p class="subtitle">Después de crearlo puedes ajustarle permisos individuales.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Volver a usuarios</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-body">
+                @using (Html.BeginForm("Create", "Usuarios", FormMethod.Post))
+                {
+                    @Html.AntiForgeryToken()
+
+                    @* Solo los errores generales (los de cada campo van abajo, junto al campo). *@
+                    @Html.ValidationSummary(true, "", new { @class = "alert alert-danger" })
+
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            @Html.LabelFor(m => m.Nombre, new { @class = "form-label" })
+                            @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control", autocomplete = "off" })
+                            @Html.ValidationMessageFor(m => m.Nombre, "", new { @class = "text-danger" })
+                        </div>
+
+                        <div class="col-sm-6">
+                            @Html.LabelFor(m => m.Apellido, new { @class = "form-label" })
+                            @Html.TextBoxFor(m => m.Apellido, new { @class = "form-control", autocomplete = "off" })
+                            @Html.ValidationMessageFor(m => m.Apellido, "", new { @class = "text-danger" })
+                        </div>
+
+                        <div class="col-sm-6">
+                            @Html.LabelFor(m => m.UsuarioLogin, new { @class = "form-label" })
+                            <i class="hint-icon" data-bs-toggle="tooltip"
+                               title="Lo que teclea la persona para entrar. Sin espacios ni acentos, porque un espacio invisible al final es de los errores más difíciles de detectar.">i</i>
+                            @Html.TextBoxFor(m => m.UsuarioLogin, new { @class = "form-control mono", autocomplete = "off", placeholder = "jperez" })
+                            @Html.ValidationMessageFor(m => m.UsuarioLogin, "", new { @class = "text-danger" })
+                        </div>
+
+                        <div class="col-sm-6">
+                            @Html.LabelFor(m => m.IdRol, new { @class = "form-label" })
+                            <i class="hint-icon" data-bs-toggle="tooltip"
+                               title="Define lo que puede hacer por defecto. Se puede dejar sin rol y decidirlo después; sin rol no hereda ningún permiso.">i</i>
+                            @Html.DropDownListFor(m => m.IdRol, (SelectList)ViewBag.ListaRoles,
+                                "— Sin rol —", new { @class = "form-select" })
+                        </div>
+
+                        <div class="col-sm-6">
+                            @Html.LabelFor(m => m.Password, new { @class = "form-label" })
+                            @Html.PasswordFor(m => m.Password, new { @class = "form-control", autocomplete = "new-password" })
+                            @Html.ValidationMessageFor(m => m.Password, "", new { @class = "text-danger" })
+                            <div class="form-text">Mínimo 8 caracteres.</div>
+                        </div>
+
+                        <div class="col-sm-6">
+                            @Html.LabelFor(m => m.ConfirmarPassword, new { @class = "form-label" })
+                            @Html.PasswordFor(m => m.ConfirmarPassword, new { @class = "form-control", autocomplete = "new-password" })
+                            @Html.ValidationMessageFor(m => m.ConfirmarPassword, "", new { @class = "text-danger" })
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary">Crear usuario</button>
+                        <a href="@Url.Action("Index")" class="btn btn-secondary">Cancelar</a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-body">
+                <div class="codigo-title mb-2">Sobre la contraseña</div>
+                <p class="text-muted-sm mb-2">
+                    No se guarda en la base. Se convierte en un hash con PBKDF2 (100 000
+                    iteraciones y una sal distinta para cada usuario) y solo se guarda ese
+                    resultado, del que no se puede volver atrás.
+                </p>
+                <p class="text-muted-sm mb-0">
+                    Por lo mismo, <strong>nadie puede consultarla después</strong> — ni tú.
+                    Si la persona la olvida, lo que se hace es asignarle una nueva.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    @Scripts.Render("~/bundles/jqueryval")
+    <script>
+        $(function () {
+            $('[data-bs-toggle="tooltip"]').each(function () { new bootstrap.Tooltip(this); });
+        });
+    </script>
+}

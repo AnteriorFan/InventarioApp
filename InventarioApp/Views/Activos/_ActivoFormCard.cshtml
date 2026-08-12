@@ -1,0 +1,191 @@
+@model InventarioApp.Models.Activo
+
+@*  Cuerpo compartido del formulario de activo (Crear y Editar), mismo criterio
+    que _ItemFormCard: Create.cshtml y Edit.cshtml quedan como cascarones
+    (header + BeginForm + footer) y todo el layout vive aca.
+
+    ViewBag.EsCreacion:
+      - true  -> el Codigo es editable y se muestran las ayudas.
+      - false -> el Codigo es readonly (es la llave del activo y ya trae
+                 etiqueta impresa; se decidio que no se pueda editar para
+                 no romper los QR ya pegados en el equipo fisico).
+*@
+
+@{
+    bool esCreacion = ViewBag.EsCreacion != null && (bool)ViewBag.EsCreacion;
+}
+
+<div class="modal-body">
+    <div class="row g-3">
+
+        <div class="col-sm-5">
+            @Html.LabelFor(m => m.Codigo, "Código", new { @class = "form-label" })
+            @if (esCreacion)
+            {
+                <i class="hint-icon" data-bs-toggle="tooltip"
+                   title="Identificador único del activo. Es lo que se pega como etiqueta/QR en el equipo, así que después de crearlo ya no se puede cambiar.">i</i>
+                @Html.TextBoxFor(m => m.Codigo, new { @class = "form-control mono", placeholder = "ACT-LAP-002", autocomplete = "off" })
+                <div class="form-text">
+                    Ej. <code>ACT-LAP-002</code> — igual que en items, <code>TIPO-CATEGORÍA-NÚM</code> ayuda a ordenar.
+                </div>
+            }
+            else
+            {
+                @Html.TextBoxFor(m => m.Codigo, new { @class = "form-control mono", @readonly = "readonly" })
+            }
+        </div>
+
+        <div class="col-sm-7">
+            @Html.LabelFor(m => m.Nombre, "Nombre", new { @class = "form-label" })
+            @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control", placeholder = esCreacion ? "Laptop Dell Latitude 5420" : "" })
+        </div>
+
+        <div class="col-sm-4">
+            @Html.LabelFor(m => m.IdCategoria, "Categoría", new { @class = "form-label" })
+            @Html.DropDownListFor(m => m.IdCategoria, (SelectList)ViewBag.Categorias, "— Selecciona —", new { @class = "form-select" })
+        </div>
+        <div class="col-sm-4">
+            @Html.LabelFor(m => m.IdMarca, "Marca", new { @class = "form-label" })
+            @Html.DropDownListFor(m => m.IdMarca, (SelectList)ViewBag.Marcas, "— Selecciona —", new { @class = "form-select" })
+        </div>
+        <div class="col-sm-4">
+            @Html.LabelFor(m => m.IdModelo, "Modelo", new { @class = "form-label" })
+            @Html.DropDownListFor(m => m.IdModelo, (SelectList)ViewBag.Modelos, "— Selecciona —", new { @class = "form-select" })
+        </div>
+
+        <div class="col-sm-6">
+            @Html.LabelFor(m => m.NumeroSerie, "Número de serie", new { @class = "form-label" })
+            @Html.TextBoxFor(m => m.NumeroSerie, new { @class = "form-control mono", placeholder = esCreacion ? "De la etiqueta del fabricante" : "" })
+        </div>
+        <div class="col-sm-6">
+            @Html.LabelFor(m => m.IdEstado, "Estado", new { @class = "form-label" })
+            @Html.DropDownListFor(m => m.IdEstado, (SelectList)ViewBag.Estados, "— Selecciona —", new { @class = "form-select" })
+        </div>
+
+        <div class="col-sm-6">
+            @Html.LabelFor(m => m.IdUbicacionOrigen, "Ubicación de origen", new { @class = "form-label" })
+            <i class="hint-icon" data-bs-toggle="tooltip"
+               title="De dónde vino el activo (ej. bodega de compras, proveedor). No cambia después: es el punto de partida para la trazabilidad.">i</i>
+            @Html.DropDownListFor(m => m.IdUbicacionOrigen, (SelectList)ViewBag.EspaciosOrigen, "— Selecciona —", new { @class = "form-select" })
+        </div>
+        <div class="col-sm-6">
+            @Html.LabelFor(m => m.IdUbicacionActual, "Ubicación actual", new { @class = "form-label" })
+            <i class="hint-icon" data-bs-toggle="tooltip"
+               title="Dónde está el activo hoy. Este sí se actualiza cada vez que se mueve de lugar.">i</i>
+            @Html.DropDownListFor(m => m.IdUbicacionActual, (SelectList)ViewBag.Espacios, "— Selecciona —", new { @class = "form-select" })
+        </div>
+
+        <div class="col-12">
+            @Html.LabelFor(m => m.IdResponsable, "Responsable", new { @class = "form-label" })
+            <i class="hint-icon" data-bs-toggle="tooltip"
+               title="Quién tiene el activo asignado actualmente. Útil para saber a quién pedírselo de vuelta.">i</i>
+            @Html.DropDownListFor(m => m.IdResponsable, (SelectList)ViewBag.Usuarios, "— Sin asignar —", new { @class = "form-select" })
+        </div>
+
+        <div class="col-sm-4">
+            @Html.LabelFor(m => m.FechaCompra, "Fecha de compra", new { @class = "form-label" })
+            @Html.TextBoxFor(m => m.FechaCompra, "{0:yyyy-MM-dd}", new { @class = "form-control", type = "date" })
+        </div>
+        <div class="col-sm-4">
+            @Html.LabelFor(m => m.Costo, "Costo", new { @class = "form-label" })
+            @Html.TextBoxFor(m => m.Costo, new { @class = "form-control num", type = "number", min = "0", step = "0.01" })
+        </div>
+        <div class="col-sm-4">
+            @Html.LabelFor(m => m.GarantiaHasta, "Garantía hasta", new { @class = "form-label" })
+            @Html.TextBoxFor(m => m.GarantiaHasta, "{0:yyyy-MM-dd}", new { @class = "form-control", type = "date" })
+        </div>
+
+        <div class="col-12">
+            @Html.LabelFor(m => m.Descripcion, "Descripción", new { @class = "form-label" })
+            @Html.TextBoxFor(m => m.Descripcion, new { @class = "form-control", placeholder = esCreacion ? "Detalles que ayuden a distinguirlo: color, accesorios incluidos…" : "" })
+        </div>
+
+        <div class="col-12">
+            @Html.LabelFor(m => m.Observaciones, "Observaciones", new { @class = "form-label" })
+            @Html.TextAreaFor(m => m.Observaciones, new { @class = "form-control", rows = "2", placeholder = esCreacion ? "Notas libres: condiciones especiales, historial previo a este sistema…" : "" })
+        </div>
+
+    </div>
+
+    @*  ----- Franja inferior: códigos ----- *@
+    <div class="codigo-strip">
+        <div class="codigo-title">
+            @(esCreacion ? "Vista previa de la etiqueta" : "Etiqueta del activo")
+        </div>
+        <div class="row g-3">
+            <div class="col-sm-8">
+                <div class="codigo-box">
+                    <svg id="barcodePreview"></svg>
+                    <span class="placeholder-txt" id="barcodePlaceholder">El código de barras aparece al escribir el código</span>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="codigo-box">
+                    <div id="qrPreview"></div>
+                    <span class="placeholder-txt" id="qrPlaceholder">Código QR</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    //  Mismo motivo que en _ItemFormCard: este <script> viaja dentro del
+    //  partial para que se ejecute solo tanto en pagina completa como al
+    //  inyectarse por AJAX dentro del modal.
+    (function () {
+
+        $('[data-bs-toggle="tooltip"]').each(function () {
+            new bootstrap.Tooltip(this);
+        });
+
+        // --- Codigo de barras y QR en vivo ---
+        var $codigo = $('#Codigo');
+        var $barcodePlaceholder = $('#barcodePlaceholder');
+        var $qrPlaceholder = $('#qrPlaceholder');
+        var timer = null;
+
+        function pintarCodigos() {
+            var valor = ($codigo.val() || '').trim();
+
+            if (valor.length < 3) {
+                $('#barcodePreview').empty().hide();
+                $('#qrPreview').empty();
+                $barcodePlaceholder.show();
+                $qrPlaceholder.show();
+                return;
+            }
+
+            $barcodePlaceholder.hide();
+            $qrPlaceholder.hide();
+
+            try {
+                $('#barcodePreview').show();
+                JsBarcode('#barcodePreview', valor, {
+                    format: 'CODE128',
+                    height: 52,
+                    fontSize: 13,
+                    margin: 4
+                });
+            } catch (e) {
+                $('#barcodePreview').hide();
+                $barcodePlaceholder.text('Ese código no se puede representar como código de barras').show();
+            }
+
+            $('#qrPreview').empty();
+            new QRCode(document.getElementById('qrPreview'), {
+                text: valor,
+                width: 96,
+                height: 96,
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        $codigo.on('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(pintarCodigos, 250);
+        });
+
+        pintarCodigos();
+    })();
+</script>

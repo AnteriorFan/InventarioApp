@@ -2301,6 +2301,27 @@ CREATE OR REPLACE PACKAGE BODY pkg_dashboard AS
     --      cambiar entre ejecuciones.
     --    - ROWS (no RANGE) fuerza el acumulado fila por fila. Con RANGE, filas
     --      empatadas comparten el mismo acumulado y pueden saltar de clase.
+    --
+    --  LA SUTILEZA QUE HAY QUE ENTENDER (aca hubo un bug real):
+    --
+    --  Se calculan DOS acumulados, no uno:
+    --
+    --    pct_acum        -> incluye la fila actual. Es el que se MUESTRA en la
+    --                       tabla ("hasta aqui llevamos el 63%").
+    --    pct_acum_previo -> hasta la fila ANTERIOR (... AND 1 PRECEDING). Es el
+    --                       que se usa para CLASIFICAR.
+    --
+    --  Clasificar con el acumulado inclusivo esta mal, y se ve en el caso mas
+    --  simple: si solo un item tuvo movimiento, su acumulado inclusivo es 100%,
+    --  o sea > 95%, y el item mas movido del almacen terminaba etiquetado como
+    --  clase C. Absurdo.
+    --
+    --  La pregunta correcta no es "cuanto llevamos contando este item", sino
+    --  "cuanto llevabamos ANTES de llegar a el": si antes de este item aun no se
+    --  cubria el 80% del movimiento, entonces este item forma parte del grupo
+    --  que lo cubre, y es clase A. La primera fila tiene acumulado previo NULL
+    --  (no hay filas antes), que NVL convierte en 0 -> siempre clase A, que es
+    --  justo lo que debe ser: el item mas movido nunca puede ser C.
     ----------------------------------------------------------------------------
     PROCEDURE sp_clasificacion_abc (
         p_dias   IN  NUMBER,
@@ -2325,10 +2346,19 @@ CREATE OR REPLACE PACKAGE BODY pkg_dashboard AS
                        v.nombre,
                        v.vol,
                        RATIO_TO_REPORT(v.vol) OVER () AS pct,
+
+                       -- Inclusivo: para mostrar en la tabla.
                        SUM(v.vol) OVER (ORDER BY v.vol DESC, v.id_item
                                         ROWS BETWEEN UNBOUNDED PRECEDING
                                                  AND CURRENT ROW)
-                           / SUM(v.vol) OVER ()       AS pct_acum
+                           / SUM(v.vol) OVER ()       AS pct_acum,
+
+                       -- Hasta la fila anterior: para clasificar.
+                       -- NULL en la primera fila; el NVL de abajo lo vuelve 0.
+                       SUM(v.vol) OVER (ORDER BY v.vol DESC, v.id_item
+                                        ROWS BETWEEN UNBOUNDED PRECEDING
+                                                 AND 1 PRECEDING)
+                           / SUM(v.vol) OVER ()       AS pct_acum_previo
                 FROM volumen v
             )
             SELECT a.id_item                       AS Id,
@@ -2337,8 +2367,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_dashboard AS
                    CAST(a.vol AS NUMBER(9))        AS Volumen,
                    ROUND(a.pct * 100, 1)           AS PorcentajeIndividual,
                    ROUND(a.pct_acum * 100, 1)      AS PorcentajeAcumulado,
-                   CASE WHEN a.pct_acum <= 0.80 THEN 'A'
-                        WHEN a.pct_acum <= 0.95 THEN 'B'
+                   CASE WHEN NVL(a.pct_acum_previo, 0) < 0.80 THEN 'A'
+                        WHEN NVL(a.pct_acum_previo, 0) < 0.95 THEN 'B'
                         ELSE 'C'
                    END                             AS Clase
             FROM acumulado a

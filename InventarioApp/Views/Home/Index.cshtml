@@ -1,4 +1,4 @@
-@model InventarioApp.Models.DashboardViewModel
+﻿@model InventarioApp.Models.DashboardViewModel
 
 @{
     ViewBag.Title = "Inicio";
@@ -17,6 +17,12 @@
         var pct = valor / total * 100;
         if (pct > 100) pct = 100;
         return pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    // "1 salidas" se lee como un descuido. Cuesta tres líneas evitarlo.
+    string Plural(int n, string singular, string plural)
+    {
+        return n + " " + (n == 1 ? singular : plural);
     }
 
     string HaceCuanto(DateTime fecha)
@@ -249,7 +255,7 @@
                                 <div class="seg-in" style="width:@(Pct(m.TotalEntradas, maxMovido))%"></div>
                                 <div class="seg-out" style="width:@(Pct(m.TotalSalidas, maxMovido))%"></div>
                             </div>
-                            <div class="cell-sub mt-1">@m.NumMovimientos movimientos · @m.TotalEntradas entradas · @m.TotalSalidas salidas</div>
+                            <div class="cell-sub mt-1">@Plural(m.NumMovimientos, "movimiento", "movimientos") · @Plural(m.TotalEntradas, "entrada", "entradas") · @Plural(m.TotalSalidas, "salida", "salidas")</div>
                         </div>
                     }
                 }
@@ -289,8 +295,9 @@
                     </div>
 
                     <p class="text-muted-sm">
-                        <strong>@countA</strong> de @totalAbc items concentran el 80% del movimiento (clase A).
-                        Son los que conviene no quedarse sin ellos nunca.
+                        <strong>@Plural(countA, "item concentra", "items concentran")</strong>
+                        el 80% del movimiento, de @totalAbc con actividad. Son los que conviene
+                        no quedarse sin ellos nunca.
                         @if (countC > 0)
                         {
                             <text>Los @countC de clase C casi no se mueven: ahí hay dinero parado.</text>

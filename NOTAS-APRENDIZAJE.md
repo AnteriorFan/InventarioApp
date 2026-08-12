@@ -146,6 +146,17 @@ db.Database.ExecuteSqlCommand("BEGIN pkg_items.sp_insertar(...); END;", parametr
 - **Cámara del celular**: librería `html5-qrcode` (CDN) usa `getUserMedia()` para acceder a la cámara y decodificar en tiempo real — soporta QR y varios formatos de barras 1D.
 - Ambos flujos (pistola y cámara) convergen en el mismo endpoint: `GET /Items/BuscarPorCodigo?codigo=X`, que sí usa `JsonRequestBehavior.AllowGet` a propósito (ver arriba).
 
+## Interfaz: capa de tema, tarjeta de item y dashboard
+
+Rediseño completo de UX/UI. Decisiones de diseño, design tokens, anatomía de cada componente y los gotchas técnicos (encoding sin BOM, `.csproj` desincronizado, funciones analíticas de Oracle para el ABC) están documentados aparte en [UI-UX.md](UI-UX.md).
+
+Lo más importante para repasar de ahí:
+
+- **`.cshtml` guardado en UTF-8 sin BOM sale con los acentos rotos** ("Ãºltimos" en vez de "últimos"). ASP.NET lo lee con la codepage de Windows al compilarlo. El `<meta charset>` del HTML NO tiene nada que ver: ese define cómo se *envía* la respuesta, el problema es cómo se *lee* el fuente. Fix de raíz: `<globalization fileEncoding="utf-8" />` en Web.config.
+- **El `.csproj` de MVC5 lista cada archivo a mano.** Un `.cs` que no esté en un `<Compile Include>` no se compila, sin error ni aviso. Si dos editores tienen el proyecto abierto a la vez, el que guarde último pisa al otro y se pierden entradas en silencio.
+- **Funciones analíticas de Oracle** (`RATIO_TO_REPORT`, `SUM() OVER (ORDER BY ... ROWS BETWEEN ...)`): a diferencia de `GROUP BY`, no colapsan filas — cada fila conserva su renglón y además recibe un valor calculado sobre todo el conjunto.
+- **Un `int?` en un ViewModel puede ser una decisión de diseño, no un descuido.** `DiasCobertura = NULL` significa "no se puede proyectar"; un `int` lo aplastaría a cero y la pantalla mentiría.
+
 ## Aclaración de arquitectura (repaso)
 
 - **Model** no es "plantilla de la base de datos" — es la forma de los datos que la app maneja en C#, no siempre 1:1 con una tabla (`LoginViewModel` no corresponde a ninguna tabla).

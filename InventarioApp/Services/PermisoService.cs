@@ -1,10 +1,18 @@
-﻿using InventarioApp.Repositories;
+using InventarioApp.Repositories;
+using System.Collections.Generic;
 
 namespace InventarioApp.Services
 {
     public interface IPermisoService
     {
         bool UsuarioTienePermiso(string usuarioLogin, string permiso);
+
+        /// <summary>
+        /// Todos los permisos efectivos del usuario, de un jalón.
+        /// Para cuando hay que preguntar por varios (el navbar), en vez de
+        /// llamar UsuarioTienePermiso() una vez por cada uno.
+        /// </summary>
+        List<string> ObtenerDeUsuario(string usuarioLogin);
     }
 
     public class PermisoService : IPermisoService
@@ -21,11 +29,18 @@ namespace InventarioApp.Services
 
         public bool UsuarioTienePermiso(string usuarioLogin, string permiso)
         {
-            var usuario = _usuarioRepository.ObtenerPorLogin(usuarioLogin);
-            if (usuario == null) return false;
+            return ObtenerDeUsuario(usuarioLogin).Contains(permiso);
+        }
 
-            var permisos = _permisoRepository.ObtenerPorUsuario(usuario.Id);
-            return permisos.Contains(permiso);
+        public List<string> ObtenerDeUsuario(string usuarioLogin)
+        {
+            var usuario = _usuarioRepository.ObtenerPorLogin(usuarioLogin);
+
+            // Lista vacía, no null: el que llama puede hacer .Contains() sin
+            // comprobar nada.
+            if (usuario == null) return new List<string>();
+
+            return _permisoRepository.ObtenerPorUsuario(usuario.Id);
         }
     }
 }

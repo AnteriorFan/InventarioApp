@@ -1,0 +1,27 @@
+@model bool
+
+@*  Palomita verde / raya gris. Se usa en las columnas "Su rol" y "Resultado"
+    de la matriz de permisos.
+
+    Va en Shared porque no pertenece a ninguna pantalla en particular, y como
+    partial en vez de un helper de C# porque es puro markup: un @Html.Raw con
+    un <svg> adentro sería el mismo HTML pero escondido en un .cs, más difícil
+    de encontrar y de retocar.
+*@
+
+@if (Model)
+{
+    <span class="text-success" title="Sí">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+        </svg>
+    </span>
+}
+else
+{
+    <span class="text-muted" title="No">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+            <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+    </span>
+}

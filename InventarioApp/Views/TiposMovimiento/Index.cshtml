@@ -2,7 +2,10 @@
 @{ ViewBag.Title = "Tipos de Movimiento"; }
 
 <h2>Tipos de Movimiento</h2>
-<a href="@Url.Action("Create")" class="btn btn-primary mb-3">+ Nuevo tipo</a>
+@if (Html.TienePermiso("CATALOGOS_ADMINISTRAR"))
+{
+    <a href="@Url.Action("Create")" class="btn btn-primary mb-3">+ Nuevo tipo</a>
+}
 
 <table class="table table-striped">
     <thead><tr><th>Nombre</th><th>Descripción</th><th>Acciones</th></tr></thead>
@@ -13,12 +16,20 @@
                 <td>@t.Nombre</td>
                 <td>@t.Descripcion</td>
                 <td>
-                    <a href="@Url.Action("Edit", new { id = t.Id })" class="btn btn-sm btn-outline-secondary">Editar</a>
-                    @using (Html.BeginForm("Delete", "TiposMovimiento", FormMethod.Post, new { onsubmit = "return confirm('¿Eliminar este tipo?');", style = "display:inline" }))
+                    @if (Html.TienePermiso("CATALOGOS_ADMINISTRAR"))
                     {
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="id" value="@t.Id" />
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                        <a href="@Url.Action("Edit", new { id = t.Id })" class="btn btn-sm btn-outline-secondary">Editar</a>
+
+                        using (Html.BeginForm("Delete", "TiposMovimiento", FormMethod.Post, new { onsubmit = "return confirm('¿Eliminar este tipo?');", style = "display:inline" }))
+                        {
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@t.Id" />
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                        }
+                    }
+                    else
+                    {
+                        <span class="text-muted-sm">—</span>
                     }
                 </td>
             </tr>

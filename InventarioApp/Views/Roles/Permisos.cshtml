@@ -1,0 +1,77 @@
+@model InventarioApp.Models.RolPermisosViewModel
+
+@{
+    ViewBag.Title = "Permisos de " + Model.Rol.Nombre;
+
+    //  Se agrupa por módulo (el prefijo del nombre: ITEMS_, ACTIVOS_...).
+    //  Con 14 permisos en una lista plana nadie encuentra nada; por módulo se
+    //  lee de un vistazo y se nota cuando a un rol le falta el _VER de algo que
+    //  sí puede administrar.
+    var grupos = Model.Permisos.GroupBy(p => p.Modulo).OrderBy(g => g.Key).ToList();
+    int asignados = Model.Permisos.Count(p => p.Asignado);
+}
+
+<div class="page-head">
+    <div>
+        <h1>Permisos del rol</h1>
+        <p class="subtitle">
+            <span class="badge-codigo">@Model.Rol.Nombre</span>
+            <span class="ms-2">@asignados de @Model.Permisos.Count permisos</span>
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Volver a roles</a>
+    </div>
+</div>
+
+@using (Html.BeginForm("Permisos", "Roles", FormMethod.Post))
+{
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" value="@Model.Rol.Id" />
+
+    <div class="card mb-3">
+        <div class="card-header card-header-flex">
+            <span>Qué puede hacer este rol</span>
+            <span class="hint">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnTodos">Marcar todo</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnNinguno">Desmarcar todo</button>
+            </span>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                @foreach (var grupo in grupos)
+                {
+                    <div class="col-lg-6">
+                        <div class="codigo-title mb-2">@grupo.Key</div>
+                        @foreach (var permiso in grupo.OrderBy(p => p.Nombre))
+                        {
+                            <div class="form-check mb-2">
+                                <input class="form-check-input permiso-check" type="checkbox"
+                                       name="permisos" value="@permiso.Id"
+                                       id="permiso@(permiso.Id)" checked="@permiso.Asignado" />
+                                <label class="form-check-label" for="permiso@(permiso.Id)">
+                                    <span class="mono">@permiso.Accion</span>
+                                    <span class="d-block text-muted-sm">@permiso.Descripcion</span>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Guardar permisos</button>
+        <a href="@Url.Action("Index")" class="btn btn-secondary">Cancelar</a>
+    </div>
+}
+
+@section scripts {
+    <script>
+        $(function () {
+            $('#btnTodos').on('click', function () { $('.permiso-check').prop('checked', true); });
+            $('#btnNinguno').on('click', function () { $('.permiso-check').prop('checked', false); });
+        });
+    </script>
+}

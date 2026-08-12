@@ -1,4 +1,4 @@
-using InventarioApp.Models;
+﻿using InventarioApp.Models;
 using Oracle.ManagedDataAccess.Client;
 using System.Collections.Generic;
 using System.Configuration;

@@ -1,0 +1,56 @@
+@model InventarioApp.Models.Rol
+
+@{
+    ViewBag.Title = "Nuevo rol";
+}
+
+<div class="page-head">
+    <div>
+        <h1>Nuevo rol</h1>
+        <p class="subtitle">Después de crearlo eliges qué puede hacer.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Volver a roles</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-body">
+                @using (Html.BeginForm("Create", "Roles", FormMethod.Post, new { @class = "" }))
+                {
+                    @Html.AntiForgeryToken()
+
+                    @Html.ValidationSummary(false, "", new { @class = "alert alert-danger" })
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.Nombre, "Nombre", new { @class = "form-label" })
+                        <i class="hint-icon" data-bs-toggle="tooltip"
+                           title="En mayúsculas y sin espacios, como los que ya existen: JEFE_AREA, EMPLEADO. Es el nombre con el que se identifica el rol en la base.">i</i>
+                        @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control mono", placeholder = "SUPERVISOR", autocomplete = "off" })
+                        @Html.ValidationMessageFor(m => m.Nombre, "", new { @class = "text-danger" })
+                    </div>
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.Descripcion, "Descripción", new { @class = "form-label" })
+                        @Html.TextAreaFor(m => m.Descripcion, new { @class = "form-control", rows = "2", placeholder = "Qué hace esta persona en la organización." })
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">Crear y elegir permisos</button>
+                        <a href="@Url.Action("Index")" class="btn btn-secondary">Cancelar</a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        $(function () {
+            $('[data-bs-toggle="tooltip"]').each(function () { new bootstrap.Tooltip(this); });
+        });
+    </script>
+}

@@ -1,34 +1,164 @@
-﻿@model IEnumerable<InventarioApp.Models.Activo>
-@{ ViewBag.Title = "Activos"; }
+@model IEnumerable<InventarioApp.Models.Activo>
 
-<h2>Activos</h2>
-<a href="@Url.Action("Create")" class="btn btn-primary mb-3">+ Nuevo activo</a>
+@{
+    ViewBag.Title = "Activos";
+}
 
-<table class="table table-striped table-sm">
-    <thead>
-        <tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Marca/Modelo</th><th>Estado</th><th>Ubicación</th><th>Responsable</th><th>Acciones</th></tr>
-    </thead>
-    <tbody>
-        @foreach (var a in Model)
+<div class="page-head">
+    <div>
+        <h1>Activos</h1>
+        <p class="subtitle">@Model.Count() activos registrados</p>
+    </div>
+    <div class="d-flex gap-2">
+        @if (Html.TienePermiso("ACTIVOS_ADMINISTRAR"))
         {
-            <tr>
-                <td>@a.Codigo</td>
-                <td>@a.Nombre</td>
-                <td>@a.NombreCategoria</td>
-                <td>@a.NombreMarca @a.NombreModelo</td>
-                <td>@a.NombreEstado</td>
-                <td>@a.NombreUbicacionActual</td>
-                <td>@a.NombreResponsable</td>
-                <td>
-                    <a href="@Url.Action("Edit", new { id = a.Id })" class="btn btn-sm btn-outline-secondary">Editar</a>
-                    @using (Html.BeginForm("Delete", "Activos", FormMethod.Post, new { onsubmit = "return confirm('¿Eliminar este activo?');", style = "display:inline" }))
-                    {
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="id" value="@a.Id" />
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
-                    }
-                </td>
-            </tr>
+            <button type="button" class="btn btn-primary open-modal-btn" data-url="@Url.Action("Create")">Nuevo activo</button>
         }
-    </tbody>
-</table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table id="activosTable" class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Activo</th>
+                    <th>Categoría</th>
+                    <th>Marca / Modelo</th>
+                    <th>Estado</th>
+                    <th>Ubicación actual</th>
+                    <th>Responsable</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in Model)
+                {
+                    <tr>
+                        <td>
+                            <div class="cell-main">@a.Nombre</div>
+                            <div class="cell-sub">@a.Codigo</div>
+                        </td>
+                        <td>@(string.IsNullOrEmpty(a.NombreCategoria) ? "—" : a.NombreCategoria)</td>
+                        <td>@(string.IsNullOrEmpty(a.NombreMarca) ? "—" : a.NombreMarca + " " + a.NombreModelo)</td>
+                        <td>@(string.IsNullOrEmpty(a.NombreEstado) ? "—" : a.NombreEstado)</td>
+                        <td>@(string.IsNullOrEmpty(a.NombreUbicacionActual) ? "—" : a.NombreUbicacionActual)</td>
+                        <td>@(string.IsNullOrEmpty(a.NombreResponsable) ? "—" : a.NombreResponsable)</td>
+                        <td>
+                            <div class="row-actions">
+                                <a href="@Url.Action("Detalles", new { id = a.Id })" class="btn btn-sm btn-outline-secondary">Detalles</a>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ver-codigo-btn" data-codigo="@a.Codigo" data-nombre="@a.Nombre">Código</button>
+
+                                @if (Html.TienePermiso("ACTIVOS_ADMINISTRAR"))
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary open-modal-btn" data-url="@Url.Action("Edit", new { id = a.Id })">Editar</button>
+
+                                    using (Html.BeginForm("Delete", "Activos", FormMethod.Post, new { onsubmit = "return confirm('¿Eliminar este activo?');" }))
+                                    {
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@a.Id" />
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                    }
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="activoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" id="activoModalContent"></div>
+    </div>
+</div>
+
+<div class="modal fade" id="codigoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="codigoModalTitle">Código</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="codigo-box mb-3"><svg id="barcodeSvg"></svg></div>
+                <div class="codigo-box"><div id="qrcodeDiv"></div></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" onclick="window.print()">Imprimir</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        $(function () {
+
+            $('#activosTable').DataTable({
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' },
+                columnDefs: [{ targets: -1, orderable: false, searchable: false }],
+                order: [[0, 'asc']]
+            });
+
+            var activoModal = new bootstrap.Modal(document.getElementById('activoModal'));
+
+            $(document).on('click', '.open-modal-btn', function (e) {
+                e.preventDefault();
+                $.get($(this).data('url'), function (html) {
+                    $('#activoModalContent').html(html);
+                    activoModal.show();
+                });
+            });
+
+            $(document).on('submit', '#activoForm', function (e) {
+                e.preventDefault();
+                var form = $(this);
+                var actionUrl = form.attr('action');
+                var $btn = form.find('button[type="submit"]');
+
+                $btn.prop('disabled', true).text('Guardando…');
+
+                $.ajax({
+                    url: actionUrl,
+                    type: 'POST',
+                    data: form.serialize(),
+                    success: function (response) {
+                        if (response && response.success) {
+                            var esCreacion = actionUrl.indexOf('/Create') !== -1;
+                            guardarFlashPendiente(
+                                esCreacion ? 'Activo creado correctamente.' : 'Activo modificado correctamente.');
+                            location.reload();
+                        } else {
+                            $btn.prop('disabled', false).text('Guardar');
+                        }
+                    },
+                    error: function () {
+                        $btn.prop('disabled', false).text('Guardar');
+                        mostrarFlash('No se pudo guardar el activo. Revisa los datos e inténtalo de nuevo.', 'error');
+                        activoModal.hide();
+                    }
+                });
+            });
+
+            // --- Modal de código ---
+            var codigoModal = new bootstrap.Modal(document.getElementById('codigoModal'));
+
+            $(document).on('click', '.ver-codigo-btn', function () {
+                var codigo = $(this).data('codigo');
+                var nombre = $(this).data('nombre');
+
+                $('#codigoModalTitle').text(nombre + ' (' + codigo + ')');
+                JsBarcode('#barcodeSvg', codigo, { format: 'CODE128', height: 60, fontSize: 14 });
+
+                $('#qrcodeDiv').empty();
+                new QRCode(document.getElementById('qrcodeDiv'), { text: codigo, width: 128, height: 128 });
+
+                codigoModal.show();
+            });
+        });
+    </script>
+}

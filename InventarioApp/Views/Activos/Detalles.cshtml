@@ -1,0 +1,107 @@
+@model InventarioApp.Models.Activo
+
+@{
+    ViewBag.Title = Model.Nombre;
+}
+
+<div class="page-head">
+    <div>
+        <h1>@Model.Nombre</h1>
+        <p class="subtitle">
+            <span class="badge-codigo">@Model.Codigo</span>
+            @if (!string.IsNullOrEmpty(Model.NombreCategoria))
+            {
+                <span class="ms-2">@Model.NombreCategoria</span>
+            }
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Volver a activos</a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="kpi-label">Estado</div>
+                    <div class="kpi-value fs-4">@(string.IsNullOrEmpty(Model.NombreEstado) ? "—" : Model.NombreEstado)</div>
+                </div>
+
+                <dl class="row mb-0" style="font-size:.875rem">
+                    <dt class="col-4 fw-normal text-muted">Marca / Modelo</dt>
+                    <dd class="col-8">
+                        @if (string.IsNullOrEmpty(Model.NombreMarca) && string.IsNullOrEmpty(Model.NombreModelo))
+                        {
+                            @:—
+                        }
+                        else
+                        {
+                            @($"{Model.NombreMarca} {Model.NombreModelo}".Trim())
+                        }
+                    </dd>
+
+                    <dt class="col-4 fw-normal text-muted">Número de serie</dt>
+                    <dd class="col-8 mono">@(string.IsNullOrEmpty(Model.NumeroSerie) ? "—" : Model.NumeroSerie)</dd>
+
+                    <dt class="col-4 fw-normal text-muted">Ubicación de origen</dt>
+                    <dd class="col-8">@(string.IsNullOrEmpty(Model.NombreUbicacionOrigen) ? "—" : Model.NombreUbicacionOrigen)</dd>
+
+                    <dt class="col-4 fw-normal text-muted">Ubicación actual</dt>
+                    <dd class="col-8">@(string.IsNullOrEmpty(Model.NombreUbicacionActual) ? "—" : Model.NombreUbicacionActual)</dd>
+
+                    <dt class="col-4 fw-normal text-muted">Responsable</dt>
+                    <dd class="col-8">@(string.IsNullOrEmpty(Model.NombreResponsable) ? "—" : Model.NombreResponsable)</dd>
+
+                    <dt class="col-4 fw-normal text-muted">Fecha de compra</dt>
+                    <dd class="col-8">@(Model.FechaCompra.HasValue ? Model.FechaCompra.Value.ToString("dd/MM/yyyy") : "—")</dd>
+
+                    <dt class="col-4 fw-normal text-muted">Costo</dt>
+                    <dd class="col-8 num">@(Model.Costo.HasValue ? Model.Costo.Value.ToString("C2") : "—")</dd>
+
+                    <dt class="col-4 fw-normal text-muted">Garantía hasta</dt>
+                    <dd class="col-8">@(Model.GarantiaHasta.HasValue ? Model.GarantiaHasta.Value.ToString("dd/MM/yyyy") : "—")</dd>
+
+                    <dt class="col-4 fw-normal text-muted">Descripción</dt>
+                    <dd class="col-8">@(string.IsNullOrEmpty(Model.Descripcion) ? "—" : Model.Descripcion)</dd>
+
+                    <dt class="col-4 fw-normal text-muted">Observaciones</dt>
+                    <dd class="col-8 mb-0">@(string.IsNullOrEmpty(Model.Observaciones) ? "—" : Model.Observaciones)</dd>
+                </dl>
+
+                <div class="codigo-strip">
+                    <div class="codigo-title">Etiqueta</div>
+                    <div class="row g-3">
+                        <div class="col-sm-8">
+                            <div class="codigo-box"><svg id="barcodeDetalle"></svg></div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="codigo-box"><div id="qrDetalle"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">Historial de movimientos</div>
+            <div class="card-body">
+                <div class="empty">
+                    Todavía no hay bitácora de movimientos para activos individuales — llega en la siguiente fase (traslados, cambios de responsable y de estado).
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        $(function () {
+            JsBarcode('#barcodeDetalle', '@Model.Codigo', { format: 'CODE128', height: 56, fontSize: 14 });
+            new QRCode(document.getElementById('qrDetalle'), { text: '@Model.Codigo', width: 96, height: 96 });
+        });
+    </script>
+}

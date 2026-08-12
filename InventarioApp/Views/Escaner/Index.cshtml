@@ -1,0 +1,209 @@
+@{
+    ViewBag.Title = "Escanear";
+    bool puedeVerActivos = ViewBag.PuedeVerActivos != null && (bool)ViewBag.PuedeVerActivos;
+}
+
+<div class="page-head">
+    <div>
+        <h1>Escanear código</h1>
+        <p class="subtitle">
+            @if (puedeVerActivos)
+            {
+                @:Reconoce items y activos — no hace falta elegir de antemano cuál es.
+            }
+            else
+            {
+                @:Con la pistola lectora o con la cámara del celular.
+            }
+        </p>
+    </div>
+    <a href="@Url.Action("Index", "Items")" class="btn btn-outline-secondary">Volver a items</a>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-5">
+        <div class="card mb-4">
+            <div class="card-header">Lector físico</div>
+            <div class="card-body">
+                <p class="text-muted-sm">
+                    La pistola funciona como un teclado: escanea y el código se escribe solo,
+                    con un Enter al final. Solo asegúrate de que el cursor esté en el campo.
+                </p>
+                <input type="text" id="inputCodigoPistola" class="form-control mono"
+                       placeholder="Esperando escaneo…" autocomplete="off" autofocus />
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">Cámara</div>
+            <div class="card-body">
+                <button type="button" id="btnCamara" class="btn btn-primary mb-3">Activar cámara</button>
+                <div id="readerCamara" style="width:100%"></div>
+            </div>
+        </div>
+
+        @*  Lista de lo escaneado en esta visita a la pantalla. Se guarda solo en
+            memoria del navegador: al recargar se pierde, y está bien — es una
+            ayuda para no perder la cuenta mientras recorres, no un registro.
+            Cuando exista la revisión de área, ESO sí tendrá que persistirse. *@
+        <div class="card" id="cardHistorial" style="display:none">
+            <div class="card-header card-header-flex">
+                <span>Escaneados ahora</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnLimpiar">Limpiar</button>
+            </div>
+            <div class="card-body">
+                <div id="listaHistorial"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div id="resultadoBusqueda">
+            <div class="card">
+                <div class="card-body">
+                    <div class="empty">
+                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                            <path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                            <line x1="7" y1="12" x2="17" y2="12" />
+                        </svg>
+                        <div>Escanea un código para ver la ficha aquí.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script>
+        // Escapa el texto antes de meterlo en el HTML: el código viene de un
+        // escaneo, o sea de fuera de la app, y no se inyecta sin filtrar.
+        function esc(txt) {
+            return $('<div>').text(txt == null ? '' : txt).html();
+        }
+
+        var historial = [];
+
+        function pintarFicha(r) {
+            if (r.Tipo === 'NINGUNO') {
+                $('#resultadoBusqueda').html(
+                    '<div class="alert alert-danger">' +
+                    'No se encontró ningún item ni activo con el código "' + esc(r.Codigo) + '".' +
+                    '</div>');
+                return;
+            }
+
+            //  Una sola rutina para los dos tipos: el servidor ya mandó la lista
+            //  de etiqueta/valor lista para recorrer. Si mañana el activo gana
+            //  un campo más, aquí no se toca nada.
+            var filas = '';
+            $.each(r.Detalles, function (i, d) {
+                filas += '<dt class="col-4 fw-normal text-muted">' + esc(d.Etiqueta) + '</dt>' +
+                         '<dd class="col-8">' + esc(d.Valor) + '</dd>';
+            });
+
+            $('#resultadoBusqueda').html(
+                '<div class="card"><div class="card-body">' +
+                    '<div class="d-flex justify-content-between align-items-start gap-3 mb-3">' +
+                        '<div>' +
+                            '<div class="text-muted-sm">' + esc(r.TipoTexto) + '</div>' +
+                            '<h2 class="mb-1">' + esc(r.Nombre) + '</h2>' +
+                            '<span class="badge-codigo">' + esc(r.Codigo) + '</span>' +
+                        '</div>' +
+                        '<span class="badge bg-' + esc(r.EstadoClase) + '">' + esc(r.EstadoTexto) + '</span>' +
+                    '</div>' +
+                    '<dl class="row mb-3" style="font-size:.875rem">' + filas + '</dl>' +
+                    '<a href="' + esc(r.Url) + '" class="btn btn-primary">Abrir ' + esc(r.TipoTexto.toLowerCase()) + '</a>' +
+                '</div></div>'
+            );
+        }
+
+        function agregarAlHistorial(r) {
+            if (r.Tipo === 'NINGUNO') { return; }
+
+            // Si ya se escaneó, se sube al principio en vez de duplicarse:
+            // en un recorrido es normal pasar dos veces por el mismo estante.
+            historial = historial.filter(function (h) { return h.Codigo !== r.Codigo; });
+            historial.unshift(r);
+
+            var html = '';
+            $.each(historial, function (i, h) {
+                html += '<a href="' + esc(h.Url) + '" class="d-flex justify-content-between align-items-center py-2 text-decoration-none border-bottom">' +
+                            '<span>' +
+                                '<span class="cell-main">' + esc(h.Nombre) + '</span>' +
+                                '<span class="cell-sub mono">' + esc(h.Codigo) + '</span>' +
+                            '</span>' +
+                            '<span class="badge bg-' + esc(h.EstadoClase) + '">' + esc(h.TipoTexto) + '</span>' +
+                        '</a>';
+            });
+
+            $('#listaHistorial').html(html);
+            $('#cardHistorial').show();
+        }
+
+        function buscar(codigo) {
+            $.get('@Url.Action("Buscar", "Escaner")', { codigo: codigo }, function (r) {
+                pintarFicha(r);
+                agregarAlHistorial(r);
+            });
+        }
+
+        $(function () {
+            var $input = $('#inputCodigoPistola');
+            $input.focus();
+
+            $input.on('keypress', function (e) {
+                if (e.which !== 13) { return; }
+                e.preventDefault();
+                var codigo = $.trim($(this).val());
+                if (codigo) { buscar(codigo); }
+                $(this).val('');   // se limpia para dejar listo el siguiente escaneo
+            });
+
+            $('#btnLimpiar').on('click', function () {
+                historial = [];
+                $('#listaHistorial').empty();
+                $('#cardHistorial').hide();
+                $input.focus();
+            });
+
+            //  Una sola instancia de la cámara, encendida y apagada con el mismo
+            //  botón. La versión anterior creaba un lector nuevo en cada clic y
+            //  lo detenía tras el primer código: al segundo clic quedaban dos
+            //  lectores peleándose por la misma cámara.
+            var lector = null;
+            var encendida = false;
+            var $btn = $('#btnCamara');
+
+            $btn.on('click', function () {
+                if (!lector) { lector = new Html5Qrcode('readerCamara'); }
+
+                if (encendida) {
+                    lector.stop().then(function () {
+                        encendida = false;
+                        $btn.text('Activar cámara').removeClass('btn-secondary').addClass('btn-primary');
+                        $input.focus();
+                    });
+                    return;
+                }
+
+                lector.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: 250 },
+                    function (textoLeido) {
+                        buscar(textoLeido);
+                        // No se apaga: en un recorrido se escanean varias cosas
+                        // seguidas y volver a encenderla cada vez es una lata.
+                    }
+                ).then(function () {
+                    encendida = true;
+                    $btn.text('Apagar cámara').removeClass('btn-primary').addClass('btn-secondary');
+                }).catch(function () {
+                    mostrarFlash('No se pudo abrir la cámara. Revisa que el navegador tenga permiso.', 'error');
+                });
+            });
+        });
+    </script>
+}

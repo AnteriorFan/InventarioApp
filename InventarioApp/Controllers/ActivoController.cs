@@ -66,6 +66,10 @@ namespace InventarioApp.Controllers
         public ActionResult Create(Activo activo)
         {
             _activoService.Crear(activo, ObtenerIdUsuarioActual());
+
+            if (Request.IsAjaxRequest())
+                return Json(new { success = true });
+
             return RedirectToAction("Index");
         }
 
@@ -83,7 +87,27 @@ namespace InventarioApp.Controllers
         public ActionResult Edit(Activo activo)
         {
             _activoService.Actualizar(activo, ObtenerIdUsuarioActual());
+
+            if (Request.IsAjaxRequest())
+                return Json(new { success = true });
+
             return RedirectToAction("Index");
+        }
+
+        [AuthorizePermiso("ACTIVOS_VER")]
+        public ActionResult Detalles(int? id)
+        {
+            if (!id.HasValue)
+                return RedirectToAction("Index");
+
+            var activo = _activoService.ObtenerPorId(id.Value);
+            if (activo == null)
+            {
+                TempData["Error"] = "El activo que buscas no existe o fue eliminado.";
+                return RedirectToAction("Index");
+            }
+
+            return View(activo);
         }
 
         [AuthorizePermiso("ACTIVOS_ADMINISTRAR")]

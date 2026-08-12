@@ -1,40 +1,29 @@
-﻿@model InventarioApp.Models.Activo
-@{ ViewBag.Title = "Editar Activo"; }
+@model InventarioApp.Models.Activo
 
-<h2>Editar Activo</h2>
-@using (Html.BeginForm())
+@{
+    ViewBag.Title = "Modificar activo";
+    ViewBag.EsCreacion = false;
+
+    if (Request.IsAjaxRequest()) { Layout = null; }
+}
+
+<div class="modal-header">
+    <div>
+        <h5 class="modal-title">Modificar activo</h5>
+        <div class="text-muted-sm">@Model.Nombre <span class="badge-codigo ms-1">@Model.Codigo</span></div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+</div>
+
+@using (Html.BeginForm("Edit", "Activos", FormMethod.Post, new { id = "activoForm" }))
 {
     @Html.AntiForgeryToken()
     @Html.HiddenFor(m => m.Id)
 
-    <div class="mb-3">@Html.LabelFor(m => m.Codigo) @Html.TextBoxFor(m => m.Codigo, new { @readonly = "readonly", @class = "form-control" })</div>
+    @Html.Partial("_ActivoFormCard", Model)
 
-    <div class="mb-3">@Html.LabelFor(m => m.Nombre) @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control" })</div>
-    <div class="mb-3">@Html.LabelFor(m => m.Descripcion) @Html.TextBoxFor(m => m.Descripcion, new { @class = "form-control" })</div>
-
-    <div class="row">
-        <div class="col-md-4 mb-3">@Html.Label("Categoría") @Html.DropDownList("IdCategoria", (SelectList)ViewBag.Categorias, "-- Selecciona --", new { @class = "form-select" })</div>
-        <div class="col-md-4 mb-3">@Html.Label("Marca") @Html.DropDownList("IdMarca", (SelectList)ViewBag.Marcas, "-- Selecciona --", new { @class = "form-select" })</div>
-        <div class="col-md-4 mb-3">@Html.Label("Modelo") @Html.DropDownList("IdModelo", (SelectList)ViewBag.Modelos, "-- Selecciona --", new { @class = "form-select" })</div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
     </div>
-
-    <div class="mb-3">@Html.LabelFor(m => m.NumeroSerie) @Html.TextBoxFor(m => m.NumeroSerie, new { @class = "form-control" })</div>
-
-    <div class="row">
-        <div class="col-md-4 mb-3">@Html.Label("Estado") @Html.DropDownList("IdEstado", (SelectList)ViewBag.Estados, "-- Selecciona --", new { @class = "form-select" })</div>
-        <div class="col-md-4 mb-3">@Html.Label("Ubicación de origen") @Html.DropDownList("IdUbicacionOrigen", (SelectList)ViewBag.EspaciosOrigen, "-- Selecciona --", new { @class = "form-select" })</div>
-        <div class="col-md-4 mb-3">@Html.Label("Ubicación actual") @Html.DropDownList("IdUbicacionActual", (SelectList)ViewBag.Espacios, "-- Selecciona --", new { @class = "form-select" })</div>
-    </div>
-
-    <div class="mb-3">@Html.Label("Responsable") @Html.DropDownList("IdResponsable", (SelectList)ViewBag.Usuarios, "-- Selecciona --", new { @class = "form-select" })</div>
-
-    <div class="row">
-        <div class="col-md-4 mb-3">@Html.LabelFor(m => m.FechaCompra) @Html.TextBoxFor(m => m.FechaCompra, "{0:yyyy-MM-dd}", new { @class = "form-control", type = "date" })</div>
-        <div class="col-md-4 mb-3">@Html.LabelFor(m => m.Costo) @Html.TextBoxFor(m => m.Costo, new { @class = "form-control" })</div>
-        <div class="col-md-4 mb-3">@Html.LabelFor(m => m.GarantiaHasta) @Html.TextBoxFor(m => m.GarantiaHasta, "{0:yyyy-MM-dd}", new { @class = "form-control", type = "date" })</div>
-    </div>
-
-    <div class="mb-3">@Html.LabelFor(m => m.Observaciones) @Html.TextAreaFor(m => m.Observaciones, new { @class = "form-control" })</div>
-
-    <button type="submit" class="btn btn-primary">Guardar</button>
 }

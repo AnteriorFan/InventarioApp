@@ -1,0 +1,48 @@
+@model InventarioApp.Models.Rol
+
+@{
+    ViewBag.Title = "Editar rol";
+}
+
+<div class="page-head">
+    <div>
+        <h1>Editar rol</h1>
+        <p class="subtitle"><span class="badge-codigo">@Model.Nombre</span></p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Permisos", new { id = Model.Id })" class="btn btn-outline-primary">Permisos del rol</a>
+        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Volver a roles</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-body">
+                @using (Html.BeginForm("Edit", "Roles", FormMethod.Post, new { @class = "" }))
+                {
+                    @Html.AntiForgeryToken()
+                    @Html.HiddenFor(m => m.Id)
+
+                    @Html.ValidationSummary(false, "", new { @class = "alert alert-danger" })
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.Nombre, "Nombre", new { @class = "form-label" })
+                        @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control mono", autocomplete = "off" })
+                        @Html.ValidationMessageFor(m => m.Nombre, "", new { @class = "text-danger" })
+                    </div>
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.Descripcion, "Descripción", new { @class = "form-label" })
+                        @Html.TextAreaFor(m => m.Descripcion, new { @class = "form-control", rows = "2" })
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                        <a href="@Url.Action("Index")" class="btn btn-secondary">Cancelar</a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
