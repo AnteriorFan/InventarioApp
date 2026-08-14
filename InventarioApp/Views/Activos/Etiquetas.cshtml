@@ -1,0 +1,80 @@
+@model IEnumerable<InventarioApp.Models.Activo>
+
+@{
+    ViewBag.Title = "Etiquetas por imprimir";
+
+    //  Agrupadas por marca+modelo porque así es como se imprimen en la vida
+    //  real: te sientas una vez y sacas todas las etiquetas de las laptops
+    //  Lenovo, no una por una en el orden en que se dieron de alta.
+    var grupos = Model
+        .GroupBy(a => ((a.NombreMarca ?? "Sin marca") + " " + (a.NombreModelo ?? "")).Trim())
+        .OrderBy(g => g.Key)
+        .ToList();
+}
+
+<div class="page-head">
+    <div>
+        <h1>Etiquetas por imprimir</h1>
+        <p class="subtitle">@Model.Count() activos sin etiqueta puesta</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Volver a activos</a>
+        @if (Model.Any())
+        {
+            <button type="button" class="btn btn-primary" onclick="window.print()">Imprimir todo</button>
+        }
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="empty">Todas las etiquetas están impresas. No hay nada pendiente.</div>
+        </div>
+    </div>
+}
+else
+{
+    foreach (var grupo in grupos)
+    {
+        <div class="card mb-4">
+            <div class="card-header card-header-flex">
+                <span>@grupo.Key</span>
+                <span class="hint">@grupo.Count() etiquetas</span>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    @foreach (var activo in grupo.OrderBy(a => a.Codigo))
+                    {
+                        <div class="col-sm-6 col-lg-4">
+                            <div class="codigo-box">
+                                <div class="text-muted-sm mb-1">@activo.Nombre</div>
+                                @*  Cada etiqueta lleva SU propio código. Imprimir el
+                                    mismo en varias dejaría la trazabilidad inservible:
+                                    escanear cualquiera de los equipos llevaría siempre
+                                    al mismo registro. *@
+                                <svg class="barcode-etiqueta" data-codigo="@activo.Codigo"></svg>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@section scripts {
+    <script>
+        $(function () {
+            $('.barcode-etiqueta').each(function () {
+                JsBarcode(this, $(this).data('codigo'), {
+                    format: 'CODE128',
+                    height: 46,
+                    fontSize: 12,
+                    margin: 4
+                });
+            });
+        });
+    </script>
+}

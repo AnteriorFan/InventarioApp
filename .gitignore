@@ -362,7 +362,7 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-*NOTAS-APRENDIZAJE
+
 ConnectionStrings.config
 ROADMAO-FUTURO.md
 
@@ -370,3 +370,12 @@ Content/uploads/*
 !Content/uploads/.gitkeep
 /InventarioApp/Content/uploads
 *.bak
+
+
+codigo_automatico.sql
+fase4_movimientos_activos.sql
+alta_usuarios.sql
+seguridad_admin.sql
+categorias_crud.sql
+fix_categorias_duplicadas.sql
+unicidad_catalogos.sql

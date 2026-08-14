@@ -7,14 +7,28 @@
     <a href="@Url.Action("Create")" class="btn btn-primary mb-3">+ Nuevo tipo</a>
 }
 
-<table class="table table-striped">
-    <thead><tr><th>Nombre</th><th>Descripción</th><th>Acciones</th></tr></thead>
+<table class="table table-hover align-middle tabla-buscable">
+    <thead><tr><th>Nombre</th><th>Descripción</th><th>Exige</th><th>Acciones</th></tr></thead>
     <tbody>
         @foreach (var t in Model)
         {
             <tr>
                 <td>@t.Nombre</td>
                 <td>@t.Descripcion</td>
+                <td>
+                    @if (t.RequiereMotivo)
+                    {
+                        <span class="badge bg-secondary">motivo</span>
+                    }
+                    @if (t.RequiereImagen)
+                    {
+                        <span class="badge bg-secondary">foto</span>
+                    }
+                    @if (!t.RequiereMotivo && !t.RequiereImagen)
+                    {
+                        <span class="text-muted-sm">—</span>
+                    }
+                </td>
                 <td>
                     @if (Html.TienePermiso("CATALOGOS_ADMINISTRAR"))
                     {

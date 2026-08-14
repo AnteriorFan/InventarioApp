@@ -60,7 +60,14 @@ namespace InventarioApp.Repositories
 
         public int Insertar(Activo activo, int idUsuario)
         {
-            var pCodigo = new OracleParameter("p_codigo", OracleDbType.Varchar2) { Value = activo.Codigo };
+            //  Código vacío = "generalo tú". El procedure lo arma con la
+            //  categoría y la marca. Se manda DBNull explícito en vez de la
+            //  cadena vacía: Oracle las trata igual, pero así se lee la
+            //  intención sin tener que recordar esa peculiaridad.
+            var pCodigo = new OracleParameter("p_codigo", OracleDbType.Varchar2)
+            {
+                Value = string.IsNullOrWhiteSpace(activo.Codigo) ? (object)DBNull.Value : activo.Codigo.Trim()
+            };
             var pNombre = new OracleParameter("p_nombre", OracleDbType.Varchar2) { Value = activo.Nombre };
             var pDescripcion = new OracleParameter("p_descripcion", OracleDbType.Varchar2) { Value = (object)activo.Descripcion ?? DBNull.Value };
             var pIdCategoria = new OracleParameter("p_id_categoria", OracleDbType.Int32) { Value = (object)activo.IdCategoria ?? DBNull.Value };

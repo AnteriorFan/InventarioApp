@@ -1,39 +1,39 @@
-﻿@model IEnumerable<InventarioApp.Models.Marca>
-@{ ViewBag.Title = "Marcas"; }
+@model IEnumerable<InventarioApp.Models.Categoria>
+@{ ViewBag.Title = "Categorías"; }
 
-<h2>Marcas</h2>
+<h2>Categorías</h2>
 @if (Html.TienePermiso("CATALOGOS_ADMINISTRAR"))
 {
-    <a href="@Url.Action("Create")" class="btn btn-primary mb-3">+ Nueva marca</a>
+    <a href="@Url.Action("Create")" class="btn btn-primary mb-3">+ Nueva categoría</a>
 }
 
 <table class="table table-hover align-middle tabla-buscable">
     <thead><tr><th>Nombre</th><th>Abreviatura</th><th>Descripción</th><th>Acciones</th></tr></thead>
     <tbody>
-        @foreach (var m in Model)
+        @foreach (var c in Model)
         {
             <tr>
-                <td>@m.Nombre</td>
+                <td>@c.Nombre</td>
                 <td>
-                    @if (string.IsNullOrEmpty(m.Abreviatura))
+                    @if (string.IsNullOrEmpty(c.Abreviatura))
                     {
                         <span class="badge bg-warning">falta</span>
                     }
                     else
                     {
-                        <span class="mono">@m.Abreviatura</span>
+                        <span class="mono">@c.Abreviatura</span>
                     }
                 </td>
-                <td>@m.Descripcion</td>
+                <td>@c.Descripcion</td>
                 <td>
                     @if (Html.TienePermiso("CATALOGOS_ADMINISTRAR"))
                     {
-                        <a href="@Url.Action("Edit", new { id = m.Id })" class="btn btn-sm btn-outline-secondary">Editar</a>
+                        <a href="@Url.Action("Edit", new { id = c.Id })" class="btn btn-sm btn-outline-secondary">Editar</a>
 
-                        using (Html.BeginForm("Delete", "Marcas", FormMethod.Post, new { onsubmit = "return confirm('¿Eliminar esta marca?');", style = "display:inline" }))
+                        using (Html.BeginForm("Delete", "Categorias", FormMethod.Post, new { onsubmit = "return confirm('¿Eliminar esta categoría?');", style = "display:inline" }))
                         {
                             @Html.AntiForgeryToken()
-                            <input type="hidden" name="id" value="@m.Id" />
+                            <input type="hidden" name="id" value="@c.Id" />
                             <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
                         }
                     }

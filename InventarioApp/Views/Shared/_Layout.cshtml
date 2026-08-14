@@ -79,8 +79,9 @@
                     @if (Html.TienePermiso("CATALOGOS_VER"))
                     {
                         <li class="nav-item dropdown">
-                            <a class="@activo("Marcas|Modelos|Estados|TiposMovimiento") dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Catálogos</a>
+                            <a class="@activo("Categorias|Marcas|Modelos|Estados|TiposMovimiento") dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Catálogos</a>
                             <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="@Url.Action("Index", "Categorias")">Categorías</a></li>
                                 <li><a class="dropdown-item" href="@Url.Action("Index", "Marcas")">Marcas</a></li>
                                 <li><a class="dropdown-item" href="@Url.Action("Index", "Modelos")">Modelos</a></li>
                                 <li><a class="dropdown-item" href="@Url.Action("Index", "Estados")">Estados</a></li>
@@ -201,7 +202,32 @@
             sessionStorage.setItem('flashTipo', tipo || 'ok');
         }
 
-        $(function () { mostrarFlashPendiente(); });
+        //  Buscador + paginacion para cualquier tabla marcada con la clase
+        //  "tabla-buscable".
+        //
+        //  Vive aca y no repetido en cada vista a proposito: los nueve listados
+        //  de catalogos necesitan exactamente la misma configuracion, y tener
+        //  nueve copias del mismo DataTable() significa que cualquier ajuste hay
+        //  que hacerlo nueve veces (y acordarse de las nueve).
+        //
+        //  Items y Activos NO llevan esta clase: tienen su propia inicializacion
+        //  con opciones distintas. Si alguna vez se les pone, se inicializarian
+        //  dos veces y DataTables se queja.
+        function initTablasBuscables() {
+            $('table.tabla-buscable').each(function () {
+                $(this).DataTable({
+                    language: { url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' },
+                    // La ultima columna siempre son los botones: ni se ordena ni se busca.
+                    columnDefs: [{ targets: -1, orderable: false, searchable: false }],
+                    order: [[0, 'asc']]
+                });
+            });
+        }
+
+        $(function () {
+            mostrarFlashPendiente();
+            initTablasBuscables();
+        });
     </script>
 
     @RenderSection("scripts", required: false)

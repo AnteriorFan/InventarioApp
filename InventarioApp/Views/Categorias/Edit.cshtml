@@ -1,0 +1,33 @@
+@model InventarioApp.Models.Categoria
+@{ ViewBag.Title = "Editar Categoría"; }
+
+<h2>Editar Categoría</h2>
+@using (Html.BeginForm("Edit", "Categorias", FormMethod.Post))
+{
+    @Html.AntiForgeryToken()
+    @Html.HiddenFor(m => m.Id)
+
+    @Html.ValidationSummary(false, "", new { @class = "alert alert-danger" })
+
+    <div class="mb-3">
+        @Html.LabelFor(m => m.Nombre)
+        @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control", required = "required", autocomplete = "off" })
+    </div>
+
+    <div class="mb-3">
+        @Html.LabelFor(m => m.Abreviatura, "Abreviatura")
+        @Html.TextBoxFor(m => m.Abreviatura, new { @class = "form-control mono", maxlength = "4", required = "required", autocomplete = "off", style = "max-width:8rem;text-transform:uppercase" })
+        <div class="form-text">
+            Cambiarla solo afecta a los códigos que se generen de aquí en adelante.
+            Los activos que ya existen conservan el suyo.
+        </div>
+    </div>
+
+    <div class="mb-3">
+        @Html.LabelFor(m => m.Descripcion)
+        @Html.TextBoxFor(m => m.Descripcion, new { @class = "form-control" })
+    </div>
+
+    <button type="submit" class="btn btn-primary">Guardar</button>
+    <a href="@Url.Action("Index")" class="btn btn-secondary">Cancelar</a>
+}

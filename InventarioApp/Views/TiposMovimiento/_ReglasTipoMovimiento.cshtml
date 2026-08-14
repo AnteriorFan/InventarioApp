@@ -1,0 +1,40 @@
+@model InventarioApp.Models.TipoMovimiento
+
+@*  Las dos reglas que este tipo de movimiento le va a exigir a quien lo use.
+
+    Están aquí, en el catálogo, y no escritas en el código, porque son una
+    decisión del negocio y no de programación: si mañana se decide que una
+    Reubicación también necesita foto, se palomea y ya — sin recompilar nada.
+
+    CheckBoxFor genera además un <input type="hidden"> con "false" justo
+    después. No sobra: un checkbox sin marcar NO se manda en el POST, así que
+    sin ese hidden desmarcar una casilla no llegaría nunca al servidor y el
+    valor se quedaría pegado en true para siempre.
+*@
+
+<div class="card mb-3">
+    <div class="card-header">Qué exige este movimiento</div>
+    <div class="card-body">
+        <div class="form-check mb-3">
+            @Html.CheckBoxFor(m => m.RequiereMotivo, new { @class = "form-check-input", id = "RequiereMotivo" })
+            <label class="form-check-label" for="RequiereMotivo">
+                <strong>Exigir un motivo</strong>
+                <span class="d-block text-muted-sm">
+                    No se podrá guardar sin explicar por qué. Para bajas y reparaciones,
+                    que es lo que una auditoría va a preguntar después.
+                </span>
+            </label>
+        </div>
+
+        <div class="form-check">
+            @Html.CheckBoxFor(m => m.RequiereImagen, new { @class = "form-check-input", id = "RequiereImagen" })
+            <label class="form-check-label" for="RequiereImagen">
+                <strong>Exigir foto de evidencia</strong>
+                <span class="d-block text-muted-sm">
+                    No se podrá guardar sin adjuntar una imagen. Para daños, donde la
+                    foto es la prueba de en qué condición estaba.
+                </span>
+            </label>
+        </div>
+    </div>
+</div>

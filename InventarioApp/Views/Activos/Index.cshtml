@@ -10,6 +10,7 @@
         <p class="subtitle">@Model.Count() activos registrados</p>
     </div>
     <div class="d-flex gap-2">
+        <a href="@Url.Action("Etiquetas")" class="btn btn-outline-secondary">Etiquetas por imprimir</a>
         @if (Html.TienePermiso("ACTIVOS_ADMINISTRAR"))
         {
             <button type="button" class="btn btn-primary open-modal-btn" data-url="@Url.Action("Create")">Nuevo activo</button>
@@ -37,7 +38,13 @@
                     <tr>
                         <td>
                             <div class="cell-main">@a.Nombre</div>
-                            <div class="cell-sub">@a.Codigo</div>
+                            <div class="cell-sub">
+                                @a.Codigo
+                                @if (a.EtiquetaPendiente)
+                                {
+                                    <span class="badge bg-warning ms-1">sin etiqueta</span>
+                                }
+                            </div>
                         </td>
                         <td>@(string.IsNullOrEmpty(a.NombreCategoria) ? "—" : a.NombreCategoria)</td>
                         <td>@(string.IsNullOrEmpty(a.NombreMarca) ? "—" : a.NombreMarca + " " + a.NombreModelo)</td>
@@ -132,8 +139,23 @@
                             guardarFlashPendiente(
                                 esCreacion ? 'Activo creado correctamente.' : 'Activo modificado correctamente.');
                             location.reload();
-                        } else {
-                            $btn.prop('disabled', false).text('Guardar');
+                            return;
+                        }
+
+                        $btn.prop('disabled', false).text('Guardar');
+
+                        //  El servidor manda el motivo (nombre vacío, código
+                        //  repetido, marca sin abreviatura...). Se pinta DENTRO
+                        //  del modal, no como flash: si se cerrara para mostrar
+                        //  el aviso se perdería todo lo capturado.
+                        if (response && response.mensaje) {
+                            var $aviso = $('#avisoActivoForm');
+                            if (!$aviso.length) {
+                                $aviso = $('<div class="alert alert-danger" id="avisoActivoForm"></div>')
+                                    .prependTo('#activoModalContent .modal-body');
+                            }
+                            $aviso.text(response.mensaje);
+                            $('#activoModalContent').scrollTop(0);
                         }
                     },
                     error: function () {

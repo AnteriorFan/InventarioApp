@@ -41,7 +41,7 @@ Espacios
 1. ✅ Ubicaciones: Edificios → Áreas → Espacios
 2. ✅ Catálogos nuevos: Marca, Modelo, Estados, Tipo de Movimiento
 3. ✅ Activos (paralelo a Items, sin migración)
-4. ⬜ Historial de movimientos enriquecido (de Activos)
+4. ✅ Historial de movimientos enriquecido (de Activos) — `fase4_movimientos_activos.sql`
 5. ⬜ Galería de imágenes (Activos_Imagenes)
 6. ⬜ Revisión de área (toma de inventario físico) — diseño en [DISENO-REVISION-AREA.md](DISENO-REVISION-AREA.md)
 
@@ -68,6 +68,75 @@ El sistema de permisos ya existía en la base pero **no tenía interfaz**: los r
 - Navbar: sección "Administración", visible solo con `SEGURIDAD_ADMINISTRAR` vía un helper nuevo `@Html.TienePermiso()`.
 
 **SQL**: `seguridad_admin.sql` (correr completo). Agrega el permiso `SEGURIDAD_ADMINISTRAR` y extiende `pkg_roles`, `pkg_permisos` y `pkg_usuarios`.
+
+---
+
+## ✅ Alta rápida de catálogos + buscador en los listados
+
+Dos fricciones que salieron al usar la app de verdad:
+
+**1. Toparse con una marca o modelo que no existe** obligaba a abandonar el alta del activo, ir a Catálogos, crearlo, volver y recapturar todo. Ahora Marca y Modelo tienen un **"+ nueva / + nuevo"** que despliega un panel **en línea** (no un modal anidado — el formulario de activos ya vive dentro de uno, y anidarlos en Bootstrap se pelea con el foco y los fondos). Crea por AJAX, mete la opción en el `<select>` y la deja seleccionada, sin perder nada de lo escrito.
+
+- El alta rápida de Marca **exige abreviatura**, aunque la columna la admita vacía: sin ella la generación del código falla al guardar el activo, y para entonces ya no se ve de dónde vino el problema.
+- El botón solo aparece con `CATALOGOS_ADMINISTRAR`, y los endpoints llevan `[ValidateAntiForgeryToken]` como cualquier otro POST — el token se toma del formulario que ya está en pantalla.
+
+**2. Nueve listados sin buscador ni paginación**: los 7 catálogos más Roles y Usuarios. Se resolvió con una clase `tabla-buscable` y **una sola** inicialización de DataTables en `_Layout`, en vez de nueve copias del mismo bloque de JS. Items y Activos siguen con la suya (tienen configuración distinta); ponerles la clase los inicializaría dos veces.
+
+---
+
+## ✅ CRUD de Categorías — el último catálogo sin pantalla
+
+**SQL**: `categorias_crud.sql`.
+
+`categorias` venía de la versión 1 del proyecto y se había quedado atrás: tres columnas (`id`, `nombre`, `descripcion`), sin `activo` y con un package que solo tenía `sp_listar`. Se le emparejó lo mínimo:
+
+- **`activo CHAR(1)`** para borrado lógico. Sin él, "eliminar" solo podría ser un `DELETE` real, que además fallaría *siempre* por las FK de `items` y `activos`.
+- `pkg_categorias` completo, con `sp_eliminar` que revisa **las dos tablas** (items *y* activos): es el único catálogo que comparten los dos sistemas paralelos, así que mirar solo una dejaría pasar el caso más fácil de romper.
+- Pantallas + alta rápida desde el formulario de activos, ya con los tres catálogos cubiertos.
+- La abreviatura pasó a ser **obligatoria en el formulario** aunque la columna la admita vacía: una categoría sin abreviatura no truena al guardarse, truena mucho después al dar de alta un activo con ella, y ahí ya no se ve de dónde vino.
+
+### Validación del formulario de activos
+
+Al escribir la guía salió que `nombre` es `NOT NULL` en Oracle pero **nada lo validaba**: dejarlo vacío daba un `ORA-01400` en pantalla amarilla. Ahora hay `required` en el navegador, comprobación en el Controller, y los errores se pintan **dentro del modal** en vez de dejar el botón re-habilitado en silencio. Por ese mismo camino salen ahora el código duplicado y la abreviatura faltante.
+
+> **Hueco conocido que sigue abierto**: `activos.numero_serie` no tiene UNIQUE, así que se puede registrar *la misma máquina física* dos veces con códigos distintos. El índice está propuesto en `categorias_crud.sql` sección 4 (opcional) — un índice único normal ya ignora los NULL, así que los activos sin número de serie no se estorban entre sí.
+
+---
+
+## ✅ FASE 4 — Historial de movimientos de activos
+
+**SQL**: `fase4_movimientos_activos.sql`.
+
+Tabla `movimientos_activos` con el **antes y el después** de cada cambio (ubicación, responsable, estado). Guardar solo el "después" haría imposible reconstruir la historia: sabrías dónde está hoy, pero no de dónde vino.
+
+**El principio del diseño**: registrar un movimiento **es** la forma de cambiar un activo. `sp_registrar` escribe el renglón del historial **y** actualiza la fila de `activos` en la misma transacción, así que es imposible que un activo cambie sin dejar rastro de por qué. Si fueran dos llamadas separadas desde C#, un error entre una y otra dejaría el activo movido sin historial.
+
+`tipos_movimiento` **dejó de ser catálogo muerto**: ahora es la tabla que manda sobre cómo se comporta cada movimiento.
+
+### Las reglas son datos, no código
+
+En vez de dejar escrito «la Baja exige motivo», se agregaron dos columnas al catálogo:
+
+| Columna | Qué hace |
+|---|---|
+| `requiere_motivo` | No se puede guardar sin explicar por qué |
+| `requiere_imagen` | No se puede guardar sin foto de evidencia |
+
+Sembradas así: **Baja** y **Mantenimiento** exigen motivo; **Reporte de daño** (tipo nuevo) exige los dos.
+
+Se editan desde la pantalla de Catálogos — marcar «requiere foto» en un tipo nuevo basta para que el formulario y el procedure empiecen a exigirla, sin recompilar nada.
+
+La regla se comprueba en **tres capas**: el JavaScript marca el campo como obligatorio al elegir el tipo, el Controller da el mensaje claro, y el procedure la vuelve a comprobar con `RAISE_APPLICATION_ERROR`. No es redundancia inútil: las dos primeras se pueden saltar (un POST armado a mano, o llamar a Oracle por fuera), la de la base no.
+
+### Lo que se aprendió aquí
+
+| Concepto | Detalle |
+|---|---|
+| `FOR UPDATE` al leer el "antes" | Bloquea la fila del activo hasta el COMMIT. Sin él, dos personas registrando un movimiento del mismo activo a la vez leerían ambas el mismo estado anterior, y el historial diría que las dos partieron del mismo punto cuando una pisó a la otra. |
+| `NVL(p_nuevo, v_actual)` | "Lo que no me mandaron, no cambia". Un traslado manda ubicación y deja responsable y estado en NULL; eso no significa «bórralos». |
+| Nombres de columna inconsistentes | En `activos` la columna es `responsable`, **no** `id_responsable` como el resto de las FK. Un `%TYPE` contra el nombre equivocado no compila — vale la pena mirar el DDL en vez de asumir el patrón. |
+| `CheckBoxFor` genera un hidden | Un checkbox sin marcar **no se manda** en el POST. Por eso MVC agrega un `<input type="hidden" value="false">` justo después: sin él, desmarcar una casilla no llegaría nunca al servidor y el valor se quedaría pegado en `true`. |
+| Un tipo ya usado no se borra | `sp_eliminar` lanza ORA-20030 si el tipo tiene movimientos: quedarían apuntando a un tipo invisible y la bitácora saldría con huecos. |
 
 ---
 
@@ -141,7 +210,34 @@ Antes de esto los permisos solo se aplicaban en el Controller: un EMPLEADO veía
 - Convertir `UnidadMedida` (hoy texto libre) a un `<select>` con valores fijos (unidad, caja, kg, litro, metro, etc.) — mismo patrón que se usó para el dropdown de Categoría.
 - **Organizar el almacenamiento de imágenes por item/fecha.** Ahora mismo `LocalImageStorage.Guardar` mete todas las imágenes de todos los items en una sola carpeta plana (`Content/uploads/`), con nombre aleatorio (GUID), sin ninguna relación visible con el item al que pertenecen (solo existe en la BD, columna `imagen_s3_key`). Se decidió esperar a implementar esto hasta el rediseño completo, porque ahí tiene más sentido: la tabla `Items_Imagenes` del esquema nuevo ya contempla varias imágenes por activo (no solo una), con tipo (`Llegada`, `Actual`, `Serie`, `Daño`, `Mantenimiento`, `Otro`) e imagen principal — así que la organización de carpetas/nombres se diseña junto con esa tabla, no antes.
 
-### Generador automático de `codigo` (identificador "inteligente")
+### ✅ Generador automático de `codigo` — IMPLEMENTADO
+
+**SQL**: `codigo_automatico.sql`. Formato final: `[ABREV_CATEGORIA][ABREV_MARCA][DDMMYY][NNN]` → `TECLEN120826001`.
+
+Las tres decisiones que estaban pendientes, resueltas:
+
+1. **Ancho del consecutivo: 3 dígitos.** Como se reinicia por categoría+marca+día, son 999 equipos de la misma marca y categoría en un mismo día. Al llegar a 999 lanza ORA-20052 con mensaje claro, en vez de dar la vuelta y repetir un código ya impreso.
+2. **Reinicio por categoría+marca+día**, con una tabla contador `codigo_consecutivos`. No un `COUNT(*)` sobre `activos`: con COUNT, dos altas simultáneas leerían el mismo número; el UPDATE del contador toma un lock y las serializa.
+3. **No hizo falta un catálogo de "Tipo".** Se usa `Categoría` + `Marca`, que ya existían. Lo que faltaba era solo una columna `abreviatura` en cada una, con índice UNIQUE — *no* derivarla de las 3 primeras letras, porque "Lenovo" y "Legrand" darían las dos `LEN` y el choque se descubriría después de imprimir.
+
+**Dónde se genera**: dentro de `pkg_activos.sp_insertar`, cuando el código llega vacío. En la misma transacción que el INSERT, para que tomar el consecutivo y usarlo no se puedan separar. El navegador solo muestra la **vista previa del prefijo** (`TECLEN120826###`) — el número real no lo puede decidir el cliente.
+
+### Aviso de reimpresión
+
+`activos.etiqueta_pendiente` (S/N). Una sola bandera para dos situaciones, porque en las dos la acción pendiente es la misma (imprimir y pegar):
+
+- activo recién creado → nunca tuvo etiqueta
+- código regenerado → la etiqueta pegada quedó obsoleta
+
+Se ve como aviso en Detalles, como badge en el listado, y hay una pantalla `/Activos/Etiquetas` que agrupa lo pendiente **por marca y modelo** — que es como se imprime en la práctica: te sientas una vez y sacas todas las de las laptops Lenovo.
+
+**Regenerar el código** (`pkg_codigos.sp_regenerar_codigo`) es el "procedimiento aparte y explícito" que pedía el comentario de `sp_actualizar`: exige motivo, deja un movimiento de tipo `Reetiquetado` en el historial de la FASE 4, y vuelve a poner `etiqueta_pendiente = 'S'`.
+
+> **Decisión consciente: NO se guarda el código anterior.** A cambio, cualquier etiqueta ya impresa con el código viejo deja de encontrar el activo al escanearla. Por eso el modal de regenerar avisa en rojo y el aviso de reimpresión insiste. Si algún día molesta, la solución es una columna `codigo_anterior` que `sp_buscar_por_codigo` también consulte.
+
+---
+
+### Propuesta original (histórico)
 
 Idea propuesta: en vez de que el usuario escriba el `codigo` a mano al crear un item, generarlo automáticamente concatenando:
 

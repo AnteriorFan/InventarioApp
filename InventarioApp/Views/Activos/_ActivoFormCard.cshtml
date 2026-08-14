@@ -13,6 +13,9 @@
 
 @{
     bool esCreacion = ViewBag.EsCreacion != null && (bool)ViewBag.EsCreacion;
+
+    // El alta rapida de catalogos solo se ofrece a quien puede administrarlos.
+    bool puedeAdministrarCatalogos = Html.TienePermiso("CATALOGOS_ADMINISTRAR");
 }
 
 <div class="modal-body">
@@ -23,34 +26,112 @@
             @if (esCreacion)
             {
                 <i class="hint-icon" data-bs-toggle="tooltip"
-                   title="Identificador único del activo. Es lo que se pega como etiqueta/QR en el equipo, así que después de crearlo ya no se puede cambiar.">i</i>
-                @Html.TextBoxFor(m => m.Codigo, new { @class = "form-control mono", placeholder = "ACT-LAP-002", autocomplete = "off" })
-                <div class="form-text">
-                    Ej. <code>ACT-LAP-002</code> — igual que en items, <code>TIPO-CATEGORÍA-NÚM</code> ayuda a ordenar.
+                   title="Déjalo vacío y se genera solo con la categoría y la marca que elijas. Es lo que se pega como etiqueta/QR en el equipo, así que después de crearlo ya no se cambia con el formulario.">i</i>
+                @Html.TextBoxFor(m => m.Codigo, new { @class = "form-control mono", placeholder = "Se genera solo", autocomplete = "off" })
+                <div class="form-text" id="ayudaCodigo">
+                    Déjalo vacío para que se genere con el formato
+                    <code>CATEGORÍA+MARCA+FECHA+Nº</code>.
                 </div>
             }
             else
             {
                 @Html.TextBoxFor(m => m.Codigo, new { @class = "form-control mono", @readonly = "readonly" })
+                <div class="form-text">
+                    Para cambiarlo hay que regenerarlo desde la pantalla de detalles: exige un
+                    motivo y obliga a reimprimir la etiqueta.
+                </div>
             }
         </div>
 
         <div class="col-sm-7">
             @Html.LabelFor(m => m.Nombre, "Nombre", new { @class = "form-label" })
-            @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control", placeholder = esCreacion ? "Laptop Dell Latitude 5420" : "" })
+            <i class="hint-icon" data-bs-toggle="tooltip"
+               title="Cómo le dice la gente, no la ficha técnica: «Laptop», «Silla ejecutiva». La marca y el modelo ya van en sus propios campos, no los repitas aquí.">i</i>
+            @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control", required = "required", placeholder = esCreacion ? "Laptop" : "" })
         </div>
 
         <div class="col-sm-4">
-            @Html.LabelFor(m => m.IdCategoria, "Categoría", new { @class = "form-label" })
+            <label class="form-label">
+                Categoría
+                @if (puedeAdministrarCatalogos)
+                {
+                    <button type="button" class="btn btn-sm btn-link p-0 ms-1 align-baseline" id="btnNuevaCategoria">+ nueva</button>
+                }
+            </label>
             @Html.DropDownListFor(m => m.IdCategoria, (SelectList)ViewBag.Categorias, "— Selecciona —", new { @class = "form-select" })
+
+            @if (puedeAdministrarCatalogos)
+            {
+                <div class="border rounded p-2 mt-2" id="panelNuevaCategoria" style="display:none">
+                    <input type="text" class="form-control form-control-sm mb-2" id="txtNuevaCategoria"
+                           placeholder="Nombre (ej. Cómputo)" maxlength="100" autocomplete="off" />
+                    <input type="text" class="form-control form-control-sm mono mb-2" id="txtNuevaCategoriaAbrev"
+                           placeholder="Abrev. (COM)" maxlength="4" autocomplete="off"
+                           style="text-transform:uppercase" />
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-primary" id="btnGuardarCategoria">Crear</button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="btnCancelarCategoria">Cancelar</button>
+                    </div>
+                    <div class="form-text text-danger" id="errNuevaCategoria"></div>
+                </div>
+            }
         </div>
+        @*  Marca y Modelo traen alta rapida: si la que necesitas no esta, se
+            crea aqui mismo. Sin esto habria que abandonar el alta del activo,
+            ir a Catalogos y volver a capturar todo desde cero.
+
+            Es un panel que se despliega EN LINEA, no un modal: este formulario
+            ya vive dentro de un modal, y anidar uno dentro de otro en Bootstrap
+            se pelea con el foco y los fondos. *@
         <div class="col-sm-4">
-            @Html.LabelFor(m => m.IdMarca, "Marca", new { @class = "form-label" })
+            <label class="form-label">
+                Marca
+                @if (puedeAdministrarCatalogos)
+                {
+                    <button type="button" class="btn btn-sm btn-link p-0 ms-1 align-baseline" id="btnNuevaMarca">+ nueva</button>
+                }
+            </label>
             @Html.DropDownListFor(m => m.IdMarca, (SelectList)ViewBag.Marcas, "— Selecciona —", new { @class = "form-select" })
+
+            @if (puedeAdministrarCatalogos)
+            {
+                <div class="border rounded p-2 mt-2" id="panelNuevaMarca" style="display:none">
+                    <input type="text" class="form-control form-control-sm mb-2" id="txtNuevaMarca"
+                           placeholder="Nombre (ej. Lenovo)" maxlength="100" autocomplete="off" />
+                    <input type="text" class="form-control form-control-sm mono mb-2" id="txtNuevaMarcaAbrev"
+                           placeholder="Abrev. (LEN)" maxlength="4" autocomplete="off"
+                           style="text-transform:uppercase" />
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-primary" id="btnGuardarMarca">Crear</button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="btnCancelarMarca">Cancelar</button>
+                    </div>
+                    <div class="form-text text-danger" id="errNuevaMarca"></div>
+                </div>
+            }
         </div>
         <div class="col-sm-4">
-            @Html.LabelFor(m => m.IdModelo, "Modelo", new { @class = "form-label" })
+            <label class="form-label">
+                Modelo
+                @if (puedeAdministrarCatalogos)
+                {
+                    <button type="button" class="btn btn-sm btn-link p-0 ms-1 align-baseline" id="btnNuevoModelo">+ nuevo</button>
+                }
+            </label>
             @Html.DropDownListFor(m => m.IdModelo, (SelectList)ViewBag.Modelos, "— Selecciona —", new { @class = "form-select" })
+
+            @if (puedeAdministrarCatalogos)
+            {
+                <div class="border rounded p-2 mt-2" id="panelNuevoModelo" style="display:none">
+                    <input type="text" class="form-control form-control-sm mb-2" id="txtNuevoModelo"
+                           placeholder="Nombre (ej. LOQ 15ARP9)" maxlength="100" autocomplete="off" />
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-primary" id="btnGuardarModelo">Crear</button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="btnCancelarModelo">Cancelar</button>
+                    </div>
+                    <div class="form-text" id="ayudaNuevoModelo">Se crea dentro de la marca elegida arriba.</div>
+                    <div class="form-text text-danger" id="errNuevoModelo"></div>
+                </div>
+            }
         </div>
 
         <div class="col-sm-6">
@@ -144,6 +225,182 @@
         var $barcodePlaceholder = $('#barcodePlaceholder');
         var $qrPlaceholder = $('#qrPlaceholder');
         var timer = null;
+
+        //  --- Vista previa del codigo automatico ---
+        //
+        //  Solo al crear, y solo si el usuario NO escribio un codigo a mano.
+        //  Muestra el prefijo real (categoria + marca + fecha) y el consecutivo
+        //  como ###, porque ese numero NO lo puede decidir el navegador: lo
+        //  reparte Oracle al insertar. Si lo calculara aqui, dos personas dando
+        //  de alta al mismo tiempo verian las dos el 001.
+        var esCreacion = @(esCreacion ? "true" : "false");
+        var abrevCategorias = @Html.Raw(Json.Encode(ViewBag.AbrevCategorias ?? new System.Collections.Generic.Dictionary<string, string>()));
+        var abrevMarcas = @Html.Raw(Json.Encode(ViewBag.AbrevMarcas ?? new System.Collections.Generic.Dictionary<string, string>()));
+
+        function fechaHoy() {
+            var d = new Date();
+            function dos(n) { return (n < 10 ? '0' : '') + n; }
+            return dos(d.getDate()) + dos(d.getMonth() + 1) + String(d.getFullYear()).slice(-2);
+        }
+
+        function actualizarPreviewCodigo() {
+            if (!esCreacion) { return; }
+
+            // Si ya escribio algo a mano, no se le estorba.
+            if (($codigo.val() || '').trim().length > 0) { return; }
+
+            var cat = abrevCategorias[$('#IdCategoria').val()] || '';
+            var mar = abrevMarcas[$('#IdMarca').val()] || '';
+
+            if (cat && mar) {
+                $('#ayudaCodigo').html('Se generará como <code>' + cat + mar + fechaHoy() + '###</code>');
+            } else {
+                $('#ayudaCodigo').html('Elige categoría y marca para ver cómo quedará el código.');
+            }
+        }
+
+        $('#IdCategoria, #IdMarca').on('change', actualizarPreviewCodigo);
+        $codigo.on('input', actualizarPreviewCodigo);
+        actualizarPreviewCodigo();
+
+        //  --- Alta rapida de marca y modelo ---
+        //
+        //  El token antifalsificacion se toma del propio formulario: los
+        //  endpoints llevan [ValidateAntiForgeryToken] igual que cualquier otro
+        //  POST, no se relajan por ser AJAX.
+        function tokenAntiforgery() {
+            return $('input[name="__RequestVerificationToken"]').first().val();
+        }
+
+        //  Mete la opcion nueva en el <select> y la deja seleccionada, para que
+        //  quien acaba de crearla no tenga que ir a buscarla.
+        function agregarOpcion($select, id, nombre) {
+            $select.append($('<option>').val(id).text(nombre));
+            $select.val(id).trigger('change');
+        }
+
+        function alternarPanel($panel, $focoAlAbrir) {
+            var visible = $panel.is(':visible');
+            $panel.toggle(!visible);
+            if (!visible && $focoAlAbrir) { $focoAlAbrir.focus(); }
+        }
+
+        //  Cada catalogo recien creado tiene que entrar tambien al diccionario
+        //  de abreviaturas, o la vista previa del codigo se quedaria vacia justo
+        //  despues de crearlo.
+        // --- Categoria ---
+        $('#btnNuevaCategoria').on('click', function () {
+            alternarPanel($('#panelNuevaCategoria'), $('#txtNuevaCategoria'));
+        });
+        $('#btnCancelarCategoria').on('click', function () {
+            $('#panelNuevaCategoria').hide();
+            $('#errNuevaCategoria').text('');
+        });
+
+        $('#btnGuardarCategoria').on('click', function () {
+            var $btn = $(this);
+            var abrev = ($('#txtNuevaCategoriaAbrev').val() || '').trim().toUpperCase();
+
+            $btn.prop('disabled', true).text('Creando…');
+            $('#errNuevaCategoria').text('');
+
+            $.post('@Url.Action("CrearRapido", "Categorias")', {
+                nombre: $('#txtNuevaCategoria').val(),
+                abreviatura: abrev,
+                __RequestVerificationToken: tokenAntiforgery()
+            }, function (r) {
+                if (r && r.success) {
+                    abrevCategorias[r.id] = abrev;
+                    agregarOpcion($('#IdCategoria'), r.id, r.nombre);
+                    $('#panelNuevaCategoria').hide();
+                    $('#txtNuevaCategoria, #txtNuevaCategoriaAbrev').val('');
+                    actualizarPreviewCodigo();
+                } else {
+                    $('#errNuevaCategoria').text((r && r.mensaje) || 'No se pudo crear la categoría.');
+                }
+            }).fail(function () {
+                $('#errNuevaCategoria').text('No se pudo contactar al servidor.');
+            }).always(function () {
+                $btn.prop('disabled', false).text('Crear');
+            });
+        });
+
+        // --- Marca ---
+        $('#btnNuevaMarca').on('click', function () {
+            alternarPanel($('#panelNuevaMarca'), $('#txtNuevaMarca'));
+        });
+        $('#btnCancelarMarca').on('click', function () {
+            $('#panelNuevaMarca').hide();
+            $('#errNuevaMarca').text('');
+        });
+
+        $('#btnGuardarMarca').on('click', function () {
+            var $btn = $(this);
+            $btn.prop('disabled', true).text('Creando…');
+            $('#errNuevaMarca').text('');
+
+            $.post('@Url.Action("CrearRapido", "Marcas")', {
+                nombre: $('#txtNuevaMarca').val(),
+                abreviatura: $('#txtNuevaMarcaAbrev').val(),
+                __RequestVerificationToken: tokenAntiforgery()
+            }, function (r) {
+                if (r && r.success) {
+                    abrevMarcas[r.id] = ($('#txtNuevaMarcaAbrev').val() || '').trim().toUpperCase();
+                    agregarOpcion($('#IdMarca'), r.id, r.nombre);
+                    $('#panelNuevaMarca').hide();
+                    $('#txtNuevaMarca, #txtNuevaMarcaAbrev').val('');
+                    actualizarPreviewCodigo();
+                } else {
+                    $('#errNuevaMarca').text((r && r.mensaje) || 'No se pudo crear la marca.');
+                }
+            }).fail(function () {
+                $('#errNuevaMarca').text('No se pudo contactar al servidor.');
+            }).always(function () {
+                $btn.prop('disabled', false).text('Crear');
+            });
+        });
+
+        // --- Modelo ---
+        $('#btnNuevoModelo').on('click', function () {
+            alternarPanel($('#panelNuevoModelo'), $('#txtNuevoModelo'));
+        });
+        $('#btnCancelarModelo').on('click', function () {
+            $('#panelNuevoModelo').hide();
+            $('#errNuevoModelo').text('');
+        });
+
+        $('#btnGuardarModelo').on('click', function () {
+            var $btn = $(this);
+            var idMarca = $('#IdMarca').val();
+
+            // Se avisa aca en vez de dejar que el servidor lo rechace: el error
+            // se ve al instante y sin viaje de ida y vuelta.
+            if (!idMarca) {
+                $('#errNuevoModelo').text('Elige primero la marca de arriba.');
+                return;
+            }
+
+            $btn.prop('disabled', true).text('Creando…');
+            $('#errNuevoModelo').text('');
+
+            $.post('@Url.Action("CrearRapido", "Modelos")', {
+                idMarca: idMarca,
+                nombre: $('#txtNuevoModelo').val(),
+                __RequestVerificationToken: tokenAntiforgery()
+            }, function (r) {
+                if (r && r.success) {
+                    agregarOpcion($('#IdModelo'), r.id, r.nombre);
+                    $('#panelNuevoModelo').hide();
+                    $('#txtNuevoModelo').val('');
+                } else {
+                    $('#errNuevoModelo').text((r && r.mensaje) || 'No se pudo crear el modelo.');
+                }
+            }).fail(function () {
+                $('#errNuevoModelo').text('No se pudo contactar al servidor.');
+            }).always(function () {
+                $btn.prop('disabled', false).text('Crear');
+            });
+        });
 
         function pintarCodigos() {
             var valor = ($codigo.val() || '').trim();

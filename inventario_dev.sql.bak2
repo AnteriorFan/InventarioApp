@@ -421,55 +421,17 @@ CREATE TABLE codigo_consecutivos (
 );
 
 
--- 2.11 Emparejar categorias con el resto de los catalogos -----------------
---      categorias es una tabla BASE (seccion 0): viene de la version 1 del
---      proyecto con solo tres columnas, mientras marcas / modelos / estados /
---      tipos_movimiento traen 'activo' y auditoria. Por eso aca van ALTER y no
---      forma parte de ningun CREATE TABLE de este archivo.
+-- 2.11 Abreviaturas de categoria y unicidad -------------------------------
+--      categorias es una tabla BASE (seccion 0), por eso aca va un ALTER y no
+--      forma parte de ningun CREATE TABLE de este archivo. marcas ya la trae
+--      declarada en la 2.4.
 ALTER TABLE categorias ADD abreviatura VARCHAR2(4);
-
---      Sin 'activo', "eliminar" una categoria solo podria ser un DELETE de
---      verdad, y ese DELETE falla SIEMPRE en cuanto exista un item o un activo
---      que la referencie, por la foreign key. El borrado logico es lo que hace
---      el resto del esquema.
-ALTER TABLE categorias ADD activo CHAR(1) DEFAULT 'S' NOT NULL;
-ALTER TABLE categorias ADD CONSTRAINT ck_categorias_activo CHECK (activo IN ('S','N'));
 
 --      UNIQUE por indice y no por constraint: en Oracle un indice unico ignora
 --      las filas con NULL, asi que una categoria sin abreviatura no estorba,
 --      pero dos con la misma si se rechazan.
 CREATE UNIQUE INDEX uq_categorias_abrev ON categorias (abreviatura);
 CREATE UNIQUE INDEX uq_marcas_abrev     ON marcas (abreviatura);
-
---      Nombre unico, sin distinguir mayusculas ni espacios sobrantes, y SOLO
---      entre las activas. El CASE es lo que consigue ese "solo activas": las
---      filas donde no se cumple devuelven NULL, y un indice unico ignora NULL.
-CREATE UNIQUE INDEX uq_categorias_nombre_ci
-    ON categorias (CASE WHEN activo = 'S' THEN UPPER(TRIM(nombre)) END);
-
---      OJO, la asimetria de arriba es deliberada: el indice del NOMBRE lleva
---      CASE (solo activas) y el de la ABREVIATURA no.
---
---        - El NOMBRE se puede reutilizar. Si desactivas "Perifericos" y manana
---          lo vuelves a crear, es la misma idea y no estorba a nadie.
---
---        - La ABREVIATURA no. Va incrustada en los codigos ya impresos y
---          pegados (PERLEN120826001). Si se reutilizara para otra categoria,
---          ese prefijo pasaria a significar dos cosas distintas segun la fecha
---          y no habria forma de saber cual mirando la etiqueta.
---
---      Para liberar una abreviatura concreta, vaciasela a la categoria
---      inactiva (el indice unico ignora los NULL):
---          UPDATE categorias SET abreviatura = NULL WHERE id_categoria = ...;
-
---      Numero de serie unico entre los activos vivos. Hoy activos solo tiene
---      UNIQUE en 'codigo', asi que nada impide registrar LA MISMA laptop fisica
---      dos veces con codigos distintos: dos fichas para un solo equipo, que es
---      el duplicado que de verdad importa en un inventario de activos.
---      Los activos sin numero de serie (mobiliario, herramienta) no se estorban
---      entre si porque el indice ignora los NULL.
-CREATE UNIQUE INDEX uq_activos_serie_ci
-    ON activos (CASE WHEN activo = 'S' THEN UPPER(TRIM(numero_serie)) END);
 
 
 -- 2.12 Unicidad de los catalogos (OPCIONAL, descomentar si se quiere) ------
@@ -859,125 +821,6 @@ COMMIT;
 --     --- 3.8.d Tablas nuevas --------------------------------------------------
 --     movimientos_activos, sus tres indices y codigo_consecutivos no existen en
 --     una base vieja. Copialos tal cual de las secciones 2.9 y 2.10.
---
---     --- 3.8.e Borrado logico en categorias -----------------------------------
---
--- ALTER TABLE categorias ADD activo CHAR(1) DEFAULT 'S' NOT NULL;
--- ALTER TABLE categorias ADD CONSTRAINT ck_categorias_activo CHECK (activo IN ('S','N'));
--- COMMIT;
-
-
--- 3.9 Reparacion: categorias duplicadas -------------------------------------
---     SOLO para bases viejas. En un build desde cero no hay duplicados y esta
---     seccion entera se saltea.
---
---     El problema: uq_categorias_nombre_ci (seccion 2.11) falla con ORA-01452
---     si ya hay dos categorias con el mismo nombre. Un duplicado tipo dos
---     "Perifericos" puede llevar anos ahi sin molestar; el seed de abreviaturas
---     de la 3.8.c solo lo hace visible al darles PER y PE2.
---
---     --- 3.9.a Ver el duplicado CON SU CONTEXTO -------------------------------
---     Antes de tocar nada hay que saber CUAL conservar. La que tenga items o
---     activos colgando es la que conviene dejar, para mover lo menos posible.
---
--- SELECT c.id_categoria,
---        c.nombre,
---        c.abreviatura,
---        (SELECT COUNT(*) FROM items   i WHERE i.id_categoria = c.id_categoria) AS items_usando,
---        (SELECT COUNT(*) FROM activos a WHERE a.id_categoria = c.id_categoria) AS activos_usando
--- FROM categorias c
--- WHERE UPPER(TRIM(c.nombre)) IN (
---         SELECT UPPER(TRIM(nombre)) FROM categorias
---         WHERE activo = 'S' GROUP BY UPPER(TRIM(nombre)) HAVING COUNT(*) > 1)
--- ORDER BY c.nombre, c.id_categoria;
---
---     --- 3.9.b Unificar (automatico, no pregunta nada) -------------------------
---     Aplica la misma regla que aplicarias a mano:
---       - Se CONSERVA la categoria que mas se usa (items + activos). Si empatan,
---         la del id mas chico, que es la que se creo primero.
---       - Lo que colgaba de las otras se reapunta a esa.
---       - Las sobrantes se DESACTIVAN, no se borran: un DELETE fallaria por las
---         foreign keys, y aunque no fallara perderias el rastro de que existieron.
---     Funciona con cualquier cantidad de duplicados, no solo con uno.
---
---     Activa la salida antes de correrlo para poder leer el resumen.
---
--- SET SERVEROUTPUT ON;
--- DECLARE
---     v_id_bueno     categorias.id_categoria%TYPE;
---     v_items        NUMBER;
---     v_activos      NUMBER;
---     v_desactivadas NUMBER;
--- BEGIN
---     FOR dup IN (
---         SELECT UPPER(TRIM(nombre)) AS nombre_norm
---         FROM categorias
---         WHERE activo = 'S'
---         GROUP BY UPPER(TRIM(nombre))
---         HAVING COUNT(*) > 1
---     ) LOOP
---         --  El ROWNUM = 1 va FUERA del ORDER BY, en una subconsulta: si se
---         --  pusiera junto al ORDER BY, Oracle filtraria ANTES de ordenar y se
---         --  quedaria con una fila cualquiera. Mismo motivo que en pkg_dashboard.
---         SELECT id_categoria INTO v_id_bueno
---           FROM (
---                 SELECT c.id_categoria
---                 FROM categorias c
---                 WHERE c.activo = 'S'
---                   AND UPPER(TRIM(c.nombre)) = dup.nombre_norm
---                 ORDER BY (SELECT COUNT(*) FROM items   i WHERE i.id_categoria = c.id_categoria)
---                        + (SELECT COUNT(*) FROM activos a WHERE a.id_categoria = c.id_categoria) DESC,
---                          c.id_categoria ASC
---                )
---          WHERE ROWNUM = 1;
---
---         UPDATE items SET id_categoria = v_id_bueno
---          WHERE id_categoria IN (SELECT id_categoria FROM categorias
---                                  WHERE activo = 'S'
---                                    AND UPPER(TRIM(nombre)) = dup.nombre_norm
---                                    AND id_categoria <> v_id_bueno);
---         v_items := SQL%ROWCOUNT;
---
---         UPDATE activos SET id_categoria = v_id_bueno
---          WHERE id_categoria IN (SELECT id_categoria FROM categorias
---                                  WHERE activo = 'S'
---                                    AND UPPER(TRIM(nombre)) = dup.nombre_norm
---                                    AND id_categoria <> v_id_bueno);
---         v_activos := SQL%ROWCOUNT;
---
---         UPDATE categorias SET activo = 'N'
---          WHERE activo = 'S'
---            AND UPPER(TRIM(nombre)) = dup.nombre_norm
---            AND id_categoria <> v_id_bueno;
---         v_desactivadas := SQL%ROWCOUNT;
---
---         DBMS_OUTPUT.PUT_LINE(
---             dup.nombre_norm || ': se conserva id=' || v_id_bueno ||
---             ' | movidos ' || v_items || ' item(s) y ' || v_activos || ' activo(s)' ||
---             ' | desactivadas ' || v_desactivadas || ' categoria(s)');
---     END LOOP;
--- END;
--- /
--- COMMIT;
---
---     --- 3.9.c Recien ahora, el indice que fallo ------------------------------
---     La consulta de control debe devolver CERO filas antes de crearlo.
---
--- SELECT UPPER(TRIM(nombre)) AS nombre_normalizado, COUNT(*) AS cuantas
--- FROM categorias WHERE activo = 'S'
--- GROUP BY UPPER(TRIM(nombre)) HAVING COUNT(*) > 1;
---
--- CREATE UNIQUE INDEX uq_categorias_nombre_ci
---     ON categorias (CASE WHEN activo = 'S' THEN UPPER(TRIM(nombre)) END);
---
---     Lo mismo para el numero de serie de los activos, si venias con datos:
---
--- SELECT UPPER(TRIM(numero_serie)) AS serie, COUNT(*) AS cuantos
--- FROM activos WHERE activo = 'S' AND numero_serie IS NOT NULL
--- GROUP BY UPPER(TRIM(numero_serie)) HAVING COUNT(*) > 1;
---
--- CREATE UNIQUE INDEX uq_activos_serie_ci
---     ON activos (CASE WHEN activo = 'S' THEN UPPER(TRIM(numero_serie)) END);
 
 
 --==============================================================================
@@ -1797,31 +1640,11 @@ CREATE OR REPLACE PACKAGE pkg_categorias AS
 
     PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR);
 
-    PROCEDURE sp_insertar (
-        p_nombre           IN  categorias.nombre%TYPE,
-        p_descripcion      IN  categorias.descripcion%TYPE,
-        p_abreviatura      IN  categorias.abreviatura%TYPE,
-        p_id_categoria_out OUT categorias.id_categoria%TYPE
-    );
-
-    PROCEDURE sp_actualizar (
-        p_id_categoria IN categorias.id_categoria%TYPE,
-        p_nombre       IN categorias.nombre%TYPE,
-        p_descripcion  IN categorias.descripcion%TYPE,
-        p_abreviatura  IN categorias.abreviatura%TYPE
-    );
-
-    PROCEDURE sp_eliminar (p_id_categoria IN categorias.id_categoria%TYPE);
-
 END pkg_categorias;
 /
 
 CREATE OR REPLACE PACKAGE BODY pkg_categorias AS
 
-    --  Ahora filtra por activo = 'S'. Las categorias desactivadas dejan de
-    --  aparecer en los dropdowns, pero los items y activos que ya las usaban
-    --  siguen mostrando su nombre: pkg_items y pkg_activos hacen LEFT JOIN sin
-    --  filtrar, justamente para que el historico no se quede en blanco.
     PROCEDURE sp_listar (p_cursor OUT SYS_REFCURSOR) IS
     BEGIN
         OPEN p_cursor FOR
@@ -1830,65 +1653,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_categorias AS
                    descripcion  AS Descripcion,
                    abreviatura  AS Abreviatura
             FROM categorias
-            WHERE activo = 'S'
             ORDER BY nombre;
     END sp_listar;
-
-    PROCEDURE sp_insertar (
-        p_nombre           IN  categorias.nombre%TYPE,
-        p_descripcion      IN  categorias.descripcion%TYPE,
-        p_abreviatura      IN  categorias.abreviatura%TYPE,
-        p_id_categoria_out OUT categorias.id_categoria%TYPE
-    ) IS
-    BEGIN
-        INSERT INTO categorias (nombre, descripcion, abreviatura)
-        VALUES (TRIM(p_nombre), p_descripcion, UPPER(TRIM(p_abreviatura)))
-        RETURNING id_categoria INTO p_id_categoria_out;
-    END sp_insertar;
-
-    PROCEDURE sp_actualizar (
-        p_id_categoria IN categorias.id_categoria%TYPE,
-        p_nombre       IN categorias.nombre%TYPE,
-        p_descripcion  IN categorias.descripcion%TYPE,
-        p_abreviatura  IN categorias.abreviatura%TYPE
-    ) IS
-    BEGIN
-        UPDATE categorias
-           SET nombre      = TRIM(p_nombre),
-               descripcion = p_descripcion,
-               abreviatura = UPPER(TRIM(p_abreviatura))
-         WHERE id_categoria = p_id_categoria;
-    END sp_actualizar;
-
-    --  Una categoria en uso no se desactiva.
-    --
-    --  Se revisan LAS DOS tablas: items y activos. Es el unico catalogo que
-    --  comparten los dos sistemas paralelos, asi que mirar solo una dejaria
-    --  pasar el caso mas facil de romper.
-    PROCEDURE sp_eliminar (p_id_categoria IN categorias.id_categoria%TYPE) IS
-        v_items   NUMBER;
-        v_activos NUMBER;
-    BEGIN
-        SELECT COUNT(*) INTO v_items
-          FROM items
-         WHERE id_categoria = p_id_categoria
-           AND activo = 'S';
-
-        SELECT COUNT(*) INTO v_activos
-          FROM activos
-         WHERE id_categoria = p_id_categoria
-           AND activo = 'S';
-
-        IF v_items + v_activos > 0 THEN
-            RAISE_APPLICATION_ERROR(-20060,
-                'No se puede eliminar: la usan ' || v_items || ' item(s) y ' ||
-                v_activos || ' activo(s). Muevelos a otra categoria primero.');
-        END IF;
-
-        UPDATE categorias
-           SET activo = 'N'
-         WHERE id_categoria = p_id_categoria;
-    END sp_eliminar;
 
 END pkg_categorias;
 /
@@ -3743,29 +3509,7 @@ ALTER TABLE usuarios DROP COLUMN rol;
 --         WHERE up.id_usuario = 1 AND up.concedido = 'N'
 --       );
 
--- 6.3 Revisar si algun paquete quedo roto (LA forma correcta) --------------
---
---     Despues de correr las secciones 2 o 3.8 vas a ver varios packages en
---     INVALID, y eso es NORMAL: cualquier DDL sobre una tabla invalida el
---     PL/SQL que depende de ella. Oracle los recompila solo al primer uso, asi
---     que mirar user_objects sin recompilar antes da un falso positivo.
---
---     Primero recompilar TODO lo invalidado:
---
--- BEGIN
---     DBMS_UTILITY.COMPILE_SCHEMA(schema => USER, compile_all => FALSE);
--- END;
--- /
---
---     Y RECIEN AHORA preguntar que quedo roto de verdad. Cero filas = todo bien.
---
--- SELECT object_name, object_type, status
--- FROM user_objects
--- WHERE object_type IN ('PACKAGE', 'PACKAGE BODY')
---   AND status <> 'VALID';
---
---     La consulta de arriba dice QUE esta roto; esta dice DONDE, con linea y
---     mensaje exactos.
+-- 6.3 Revisar si algun paquete quedo con errores de compilacion.
 --
 -- SELECT name, type, line, position, text
 -- FROM user_errors

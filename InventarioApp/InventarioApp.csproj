@@ -204,9 +204,13 @@
     <Compile Include="Models\LoginViewModel.cs" />
     <Compile Include="Models\Marca.cs" />
     <Compile Include="Models\Modelos.cs" />
+    <Compile Include="Controllers\CategoriasController.cs" />
     <Compile Include="Controllers\EscanerController.cs" />
     <Compile Include="Helpers\ErrorOracle.cs" />
     <Compile Include="Models\CrearUsuarioViewModel.cs" />
+    <Compile Include="Models\DetalleActivoViewModel.cs" />
+    <Compile Include="Models\MovimientoActivo.cs" />
+    <Compile Include="Models\RegistrarMovimientoViewModel.cs" />
     <Compile Include="Models\ResultadoEscaneo.cs" />
     <Compile Include="Models\MovimIentosinventario.cs" />
     <Compile Include="Models\Permiso.cs" />
@@ -228,6 +232,8 @@
     <Compile Include="Repositories\MarcaRepository.cs" />
     <Compile Include="Repositories\ModeloRepository.cs" />
     <Compile Include="Repositories\MovimientoRepository.cs" />
+    <Compile Include="Repositories\CodigoRepository.cs" />
+    <Compile Include="Repositories\MovimientoActivoRepository.cs" />
     <Compile Include="Repositories\PermisoRepository.cs" />
     <Compile Include="Repositories\RolRepository.cs" />
     <Compile Include="Repositories\TipoMovimientoRepository.cs" />
@@ -252,6 +258,8 @@
     <Compile Include="Services\MarcaService.cs" />
     <Compile Include="Services\ModeloService.cs" />
     <Compile Include="Services\MovimientoService.cs" />
+    <Compile Include="Services\CodigoService.cs" />
+    <Compile Include="Services\MovimientoActivoService.cs" />
     <Compile Include="Services\PermisoService.cs" />
     <Compile Include="Services\RolService.cs" />
     <Compile Include="Services\TipoMovimientoService.cs" />
@@ -346,6 +354,7 @@
     <Content Include="Views\Activos\Create.cshtml" />
     <Content Include="Views\Activos\Edit.cshtml" />
     <Content Include="Views\Activos\Detalles.cshtml" />
+    <Content Include="Views\Activos\Etiquetas.cshtml" />
     <Content Include="Views\Activos\_ActivoFormCard.cshtml" />
     <Content Include="Views\Roles\Index.cshtml" />
     <Content Include="Views\Roles\Create.cshtml" />
@@ -357,6 +366,10 @@
     <Content Include="Views\Shared\_MarcaSiNo.cshtml" />
     <Content Include="Views\Shared\NoAutorizado.cshtml" />
     <Content Include="Views\Escaner\Index.cshtml" />
+    <Content Include="Views\Categorias\Index.cshtml" />
+    <Content Include="Views\Categorias\Create.cshtml" />
+    <Content Include="Views\Categorias\Edit.cshtml" />
+    <Content Include="Views\TiposMovimiento\_ReglasTipoMovimiento.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="App_Data\" />

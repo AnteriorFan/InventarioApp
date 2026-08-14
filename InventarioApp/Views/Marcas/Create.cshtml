@@ -7,5 +7,15 @@
     @Html.AntiForgeryToken()
     <div class="mb-3">@Html.LabelFor(m => m.Nombre) @Html.TextBoxFor(m => m.Nombre, new { @class = "form-control" })</div>
     <div class="mb-3">@Html.LabelFor(m => m.Descripcion) @Html.TextBoxFor(m => m.Descripcion, new { @class = "form-control" })</div>
+
+    <div class="mb-3">
+        @Html.LabelFor(m => m.Abreviatura, "Abreviatura")
+        @Html.TextBoxFor(m => m.Abreviatura, new { @class = "form-control mono", maxlength = "4", style = "max-width:8rem;text-transform:uppercase", autocomplete = "off" })
+        <div class="form-text">
+            2 a 4 letras. Es la parte de esta marca dentro del código automático de los
+            activos (ej. <code>LEN</code> para Lenovo). No se puede repetir entre marcas.
+        </div>
+    </div>
+
     <button type="submit" class="btn btn-primary">Guardar</button>
 }

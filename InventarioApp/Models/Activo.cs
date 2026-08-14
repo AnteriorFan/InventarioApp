@@ -27,5 +27,18 @@ namespace InventarioApp.Models
         public decimal? Costo { get; set; }
         public DateTime? GarantiaHasta { get; set; }
         public string Observaciones { get; set; }
+
+        //  'S' mientras la etiqueta física no se haya impreso y pegado.
+        //
+        //  Una sola bandera cubre los dos casos, porque en ambos la acción
+        //  pendiente es la misma (imprimir y pegar):
+        //    - activo recién creado  -> nunca tuvo etiqueta
+        //    - código regenerado     -> la etiqueta pegada quedó obsoleta
+        public string EtiquetaPendienteFlag { get; set; }
+
+        public bool EtiquetaPendiente
+        {
+            get { return EtiquetaPendienteFlag == "S"; }
+        }
     }
 }

@@ -36,14 +36,16 @@ namespace InventarioApp.Repositories
             var connectionString = ConfigurationManager.ConnectionStrings["OracleDbContext"].ConnectionString;
             var pNombre = new OracleParameter("p_nombre", OracleDbType.Varchar2) { Value = tipo.Nombre };
             var pDescripcion = new OracleParameter("p_descripcion", OracleDbType.Varchar2) { Value = (object)tipo.Descripcion ?? DBNull.Value };
+            var pRequiereMotivo = new OracleParameter("p_requiere_motivo", OracleDbType.Char) { Value = tipo.RequiereMotivoFlag ?? "N" };
+            var pRequiereImagen = new OracleParameter("p_requiere_imagen", OracleDbType.Char) { Value = tipo.RequiereImagenFlag ?? "N" };
             var pIdOut = new OracleParameter("p_id_tipo_movimiento_out", OracleDbType.Int32) { Direction = ParameterDirection.Output };
 
             using (var connection = new OracleConnection(connectionString))
             using (var db = new DbContext(connection, true))
             {
                 db.Database.ExecuteSqlCommand(
-                    "BEGIN pkg_tipos_movimiento.sp_insertar(:p_nombre, :p_descripcion, :p_id_tipo_movimiento_out); END;",
-                    pNombre, pDescripcion, pIdOut);
+                    "BEGIN pkg_tipos_movimiento.sp_insertar(:p_nombre, :p_descripcion, :p_requiere_motivo, :p_requiere_imagen, :p_id_tipo_movimiento_out); END;",
+                    pNombre, pDescripcion, pRequiereMotivo, pRequiereImagen, pIdOut);
                 return Convert.ToInt32(pIdOut.Value.ToString());
             }
         }
@@ -54,13 +56,15 @@ namespace InventarioApp.Repositories
             var pId = new OracleParameter("p_id_tipo_movimiento", OracleDbType.Int32) { Value = tipo.Id };
             var pNombre = new OracleParameter("p_nombre", OracleDbType.Varchar2) { Value = tipo.Nombre };
             var pDescripcion = new OracleParameter("p_descripcion", OracleDbType.Varchar2) { Value = (object)tipo.Descripcion ?? DBNull.Value };
+            var pRequiereMotivo = new OracleParameter("p_requiere_motivo", OracleDbType.Char) { Value = tipo.RequiereMotivoFlag ?? "N" };
+            var pRequiereImagen = new OracleParameter("p_requiere_imagen", OracleDbType.Char) { Value = tipo.RequiereImagenFlag ?? "N" };
 
             using (var connection = new OracleConnection(connectionString))
             using (var db = new DbContext(connection, true))
             {
                 db.Database.ExecuteSqlCommand(
-                    "BEGIN pkg_tipos_movimiento.sp_actualizar(:p_id_tipo_movimiento, :p_nombre, :p_descripcion); END;",
-                    pId, pNombre, pDescripcion);
+                    "BEGIN pkg_tipos_movimiento.sp_actualizar(:p_id_tipo_movimiento, :p_nombre, :p_descripcion, :p_requiere_motivo, :p_requiere_imagen); END;",
+                    pId, pNombre, pDescripcion, pRequiereMotivo, pRequiereImagen);
             }
         }
 

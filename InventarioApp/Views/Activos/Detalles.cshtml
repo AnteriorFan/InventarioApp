@@ -1,17 +1,18 @@
-@model InventarioApp.Models.Activo
+@model InventarioApp.Models.DetalleActivoViewModel
 
 @{
-    ViewBag.Title = Model.Nombre;
+    ViewBag.Title = Model.Activo.Nombre;
+    var activo = Model.Activo;
 }
 
 <div class="page-head">
     <div>
-        <h1>@Model.Nombre</h1>
+        <h1>@activo.Nombre</h1>
         <p class="subtitle">
-            <span class="badge-codigo">@Model.Codigo</span>
-            @if (!string.IsNullOrEmpty(Model.NombreCategoria))
+            <span class="badge-codigo">@activo.Codigo</span>
+            @if (!string.IsNullOrEmpty(activo.NombreCategoria))
             {
-                <span class="ms-2">@Model.NombreCategoria</span>
+                <span class="ms-2">@activo.NombreCategoria</span>
             }
         </p>
     </div>
@@ -20,54 +21,67 @@
     </div>
 </div>
 
+@*  Aviso de reimpresión. Sale cuando el activo se acaba de crear (nunca tuvo
+    etiqueta) o cuando se le regeneró el código (la pegada quedó obsoleta). *@
+@if (activo.EtiquetaPendiente)
+{
+    <div class="alert alert-warning d-flex justify-content-between align-items-center gap-3">
+        <div>
+            <strong>Falta imprimir la etiqueta.</strong>
+            Este activo tiene un código sin etiqueta puesta — mientras no la pegues,
+            escanearlo no va a encontrarlo.
+        </div>
+        @if (Html.TienePermiso("ACTIVOS_ADMINISTRAR"))
+        {
+            using (Html.BeginForm("MarcarEtiquetaImpresa", "Activos", FormMethod.Post, new { @class = "text-nowrap" }))
+            {
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@activo.Id" />
+                <button type="submit" class="btn btn-sm btn-warning">Ya la imprimí</button>
+            }
+        }
+    </div>
+}
+
 <div class="row g-4">
     <div class="col-lg-8">
-        <div class="card">
+        <div class="card mb-4">
             <div class="card-body">
                 <div class="mb-3">
                     <div class="kpi-label">Estado</div>
-                    <div class="kpi-value fs-4">@(string.IsNullOrEmpty(Model.NombreEstado) ? "—" : Model.NombreEstado)</div>
+                    <div class="kpi-value fs-4">@(string.IsNullOrEmpty(activo.NombreEstado) ? "—" : activo.NombreEstado)</div>
                 </div>
 
                 <dl class="row mb-0" style="font-size:.875rem">
                     <dt class="col-4 fw-normal text-muted">Marca / Modelo</dt>
-                    <dd class="col-8">
-                        @if (string.IsNullOrEmpty(Model.NombreMarca) && string.IsNullOrEmpty(Model.NombreModelo))
-                        {
-                            @:—
-                        }
-                        else
-                        {
-                            @($"{Model.NombreMarca} {Model.NombreModelo}".Trim())
-                        }
-                    </dd>
+                    <dd class="col-8">@(string.IsNullOrWhiteSpace(activo.NombreMarca + activo.NombreModelo) ? "—" : (activo.NombreMarca + " " + activo.NombreModelo).Trim())</dd>
 
                     <dt class="col-4 fw-normal text-muted">Número de serie</dt>
-                    <dd class="col-8 mono">@(string.IsNullOrEmpty(Model.NumeroSerie) ? "—" : Model.NumeroSerie)</dd>
+                    <dd class="col-8 mono">@(string.IsNullOrEmpty(activo.NumeroSerie) ? "—" : activo.NumeroSerie)</dd>
 
                     <dt class="col-4 fw-normal text-muted">Ubicación de origen</dt>
-                    <dd class="col-8">@(string.IsNullOrEmpty(Model.NombreUbicacionOrigen) ? "—" : Model.NombreUbicacionOrigen)</dd>
+                    <dd class="col-8">@(string.IsNullOrEmpty(activo.NombreUbicacionOrigen) ? "—" : activo.NombreUbicacionOrigen)</dd>
 
                     <dt class="col-4 fw-normal text-muted">Ubicación actual</dt>
-                    <dd class="col-8">@(string.IsNullOrEmpty(Model.NombreUbicacionActual) ? "—" : Model.NombreUbicacionActual)</dd>
+                    <dd class="col-8">@(string.IsNullOrEmpty(activo.NombreUbicacionActual) ? "—" : activo.NombreUbicacionActual)</dd>
 
                     <dt class="col-4 fw-normal text-muted">Responsable</dt>
-                    <dd class="col-8">@(string.IsNullOrEmpty(Model.NombreResponsable) ? "—" : Model.NombreResponsable)</dd>
+                    <dd class="col-8">@(string.IsNullOrEmpty(activo.NombreResponsable) ? "—" : activo.NombreResponsable)</dd>
 
                     <dt class="col-4 fw-normal text-muted">Fecha de compra</dt>
-                    <dd class="col-8">@(Model.FechaCompra.HasValue ? Model.FechaCompra.Value.ToString("dd/MM/yyyy") : "—")</dd>
+                    <dd class="col-8">@(activo.FechaCompra.HasValue ? activo.FechaCompra.Value.ToString("dd/MM/yyyy") : "—")</dd>
 
                     <dt class="col-4 fw-normal text-muted">Costo</dt>
-                    <dd class="col-8 num">@(Model.Costo.HasValue ? Model.Costo.Value.ToString("C2") : "—")</dd>
+                    <dd class="col-8 num">@(activo.Costo.HasValue ? activo.Costo.Value.ToString("C2") : "—")</dd>
 
                     <dt class="col-4 fw-normal text-muted">Garantía hasta</dt>
-                    <dd class="col-8">@(Model.GarantiaHasta.HasValue ? Model.GarantiaHasta.Value.ToString("dd/MM/yyyy") : "—")</dd>
+                    <dd class="col-8">@(activo.GarantiaHasta.HasValue ? activo.GarantiaHasta.Value.ToString("dd/MM/yyyy") : "—")</dd>
 
                     <dt class="col-4 fw-normal text-muted">Descripción</dt>
-                    <dd class="col-8">@(string.IsNullOrEmpty(Model.Descripcion) ? "—" : Model.Descripcion)</dd>
+                    <dd class="col-8">@(string.IsNullOrEmpty(activo.Descripcion) ? "—" : activo.Descripcion)</dd>
 
                     <dt class="col-4 fw-normal text-muted">Observaciones</dt>
-                    <dd class="col-8 mb-0">@(string.IsNullOrEmpty(Model.Observaciones) ? "—" : Model.Observaciones)</dd>
+                    <dd class="col-8 mb-0">@(string.IsNullOrEmpty(activo.Observaciones) ? "—" : activo.Observaciones)</dd>
                 </dl>
 
                 <div class="codigo-strip">
@@ -80,28 +94,227 @@
                             <div class="codigo-box"><div id="qrDetalle"></div></div>
                         </div>
                     </div>
+
+                    @if (Html.TienePermiso("ACTIVOS_ADMINISTRAR"))
+                    {
+                        <div class="d-flex gap-2 mt-3">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()">Imprimir</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalRegenerar">
+                                Regenerar código
+                            </button>
+                        </div>
+                    }
                 </div>
+            </div>
+        </div>
+
+        @*  ----- Historial ----- *@
+        <div class="card">
+            <div class="card-header card-header-flex">
+                <span>Historial de movimientos</span>
+                <span class="hint">@Model.Movimientos.Count registros</span>
+            </div>
+            <div class="card-body">
+                @if (Model.Movimientos.Count == 0)
+                {
+                    <div class="empty">Este activo no tiene movimientos registrados todavía.</div>
+                }
+                else
+                {
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Qué cambió</th>
+                                <th>Quién</th>
+                                <th class="text-end">Evidencia</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in Model.Movimientos)
+                            {
+                                <tr>
+                                    <td class="text-nowrap text-muted-sm">@m.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td><span class="badge bg-secondary">@m.TipoMovimiento</span></td>
+                                    <td>
+                                        <div class="cell-main">@m.Resumen</div>
+                                        @if (!string.IsNullOrEmpty(m.Motivo))
+                                        {
+                                            <div class="cell-sub">@m.Motivo</div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(m.Observaciones))
+                                        {
+                                            <div class="text-muted-sm">@m.Observaciones</div>
+                                        }
+                                    </td>
+                                    <td class="text-muted-sm">@m.RealizadoPor</td>
+                                    <td class="text-end">
+                                        @if (m.TieneImagen)
+                                        {
+                                            <a href="~/Content/uploads/@m.ImagenKey" target="_blank" class="btn btn-sm btn-outline-secondary">Ver foto</a>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted-sm">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
             </div>
         </div>
     </div>
 
+    @*  ----- Registrar movimiento ----- *@
     <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header">Historial de movimientos</div>
-            <div class="card-body">
-                <div class="empty">
-                    Todavía no hay bitácora de movimientos para activos individuales — llega en la siguiente fase (traslados, cambios de responsable y de estado).
+        @if (Html.TienePermiso("ACTIVOS_MOVER"))
+        {
+            <div class="card">
+                <div class="card-header">Registrar movimiento</div>
+                <div class="card-body">
+                    @using (Html.BeginForm("RegistrarMovimiento", "Activos", FormMethod.Post, new { enctype = "multipart/form-data", id = "formMovimiento" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="IdActivo" value="@activo.Id" />
+
+                        <div class="mb-3">
+                            <label class="form-label">Tipo de movimiento</label>
+                            @Html.DropDownList("IdTipoMovimiento", (SelectList)ViewBag.TiposMovimiento,
+                                "— Selecciona —", new { @class = "form-select", id = "selTipo" })
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Nueva ubicación</label>
+                            @Html.DropDownList("IdUbicacionDestino", (SelectList)ViewBag.EspaciosMovimiento,
+                                "— Sin cambio —", new { @class = "form-select" })
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Nuevo responsable</label>
+                            @Html.DropDownList("IdResponsableNuevo", (SelectList)ViewBag.UsuariosMovimiento,
+                                "— Sin cambio —", new { @class = "form-select" })
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Nuevo estado</label>
+                            @Html.DropDownList("IdEstadoNuevo", (SelectList)ViewBag.EstadosMovimiento,
+                                "— Sin cambio —", new { @class = "form-select" })
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Motivo <span class="text-danger" id="reqMotivo" style="display:none">*</span>
+                            </label>
+                            <input type="text" name="Motivo" class="form-control" id="txtMotivo"
+                                   placeholder="Por qué se hace este movimiento" maxlength="200" />
+                            <div class="form-text" id="ayudaMotivo" style="display:none">
+                                Este tipo de movimiento exige una explicación.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Foto de evidencia <span class="text-danger" id="reqImagen" style="display:none">*</span>
+                            </label>
+                            <input type="file" name="evidencia" class="form-control" id="fileEvidencia" accept="image/*" />
+                            <div class="form-text" id="ayudaImagen" style="display:none">
+                                Este tipo de movimiento exige una foto como evidencia.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Observaciones</label>
+                            <textarea name="Observaciones" class="form-control" rows="2" maxlength="1000"></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">Registrar movimiento</button>
+                    }
                 </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-body">
+                    <p class="text-muted-sm mb-0">
+                        Los campos que dejes en <strong>«Sin cambio»</strong> se quedan como están.
+                        Registrar el movimiento es lo que actualiza el activo — no hace falta
+                        editarlo aparte, y así siempre queda constancia de por qué cambió.
+                    </p>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@if (Html.TienePermiso("ACTIVOS_ADMINISTRAR"))
+{
+    <div class="modal fade" id="modalRegenerar" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                @using (Html.BeginForm("RegenerarCodigo", "Activos", FormMethod.Post))
+                {
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@activo.Id" />
+
+                    <div class="modal-header">
+                        <h5 class="modal-title">Regenerar código</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="alert alert-danger">
+                            <strong>La etiqueta pegada dejará de servir.</strong>
+                            El código anterior <span class="mono">@activo.Codigo</span> no se conserva:
+                            si alguien escanea el sticker viejo, no va a encontrar este activo.
+                            Vas a tener que imprimir y pegar la etiqueta nueva.
+                        </div>
+
+                        <p class="text-muted-sm">
+                            El código nuevo se arma con la categoría y la marca que tiene
+                            <strong>ahora mismo</strong>. Si lo que quieres es corregirlas,
+                            edítalas primero y regenera después.
+                        </p>
+
+                        <div class="mb-0">
+                            <label class="form-label">Motivo <span class="text-danger">*</span></label>
+                            <input type="text" name="motivo" class="form-control" required maxlength="200"
+                                   placeholder="Por qué hay que cambiar el código" />
+                            <div class="form-text">Queda en el historial del activo como «Reetiquetado».</div>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger">Regenerar código</button>
+                    </div>
+                }
             </div>
         </div>
     </div>
-</div>
+}
 
 @section scripts {
     <script>
         $(function () {
-            JsBarcode('#barcodeDetalle', '@Model.Codigo', { format: 'CODE128', height: 56, fontSize: 14 });
-            new QRCode(document.getElementById('qrDetalle'), { text: '@Model.Codigo', width: 96, height: 96 });
+            JsBarcode('#barcodeDetalle', '@activo.Codigo', { format: 'CODE128', height: 56, fontSize: 14 });
+            new QRCode(document.getElementById('qrDetalle'), { text: '@activo.Codigo', width: 96, height: 96 });
+
+            //  Reglas por tipo, tal como están guardadas en el catálogo.
+            //  Vienen del servidor para que marcar "requiere foto" en un tipo
+            //  nuevo se refleje aquí sin tocar este archivo.
+            var reglas = @Html.Raw(Json.Encode(ViewBag.ReglasTipos));
+
+            $('#selTipo').on('change', function () {
+                var regla = reglas[$(this).val()] || { requiereMotivo: false, requiereImagen: false };
+
+                $('#reqMotivo, #ayudaMotivo').toggle(!!regla.requiereMotivo);
+                $('#txtMotivo').prop('required', !!regla.requiereMotivo);
+
+                $('#reqImagen, #ayudaImagen').toggle(!!regla.requiereImagen);
+                $('#fileEvidencia').prop('required', !!regla.requiereImagen);
+            });
         });
     </script>
 }
